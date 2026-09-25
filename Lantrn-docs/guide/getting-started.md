@@ -7,7 +7,6 @@ Lantrn runs as two containers: the app and [Qdrant](https://qdrant.tech), which 
 Download the compose file into a new folder and start it:
 
 ```sh
-mkdir lantrn && cd lantrn
 curl -O https://raw.githubusercontent.com/Viedin/lantrn/main/Lantrn/docker-compose.yml
 docker compose up -d
 ```

@@ -32,6 +32,7 @@ features:
 ---
 
 ## Up and running in a minute
+Download the compose file into a new folder and start it:
 
 ```sh
 curl -O https://raw.githubusercontent.com/Viedin/lantrn/main/Lantrn/docker-compose.yml
@@ -41,5 +42,7 @@ docker compose up -d
 1. Open http://localhost:8080 and register — the first account is the admin.
 2. Point **Settings → Embeddings** at your model.
 3. Drop files into `documents/` and start searching.
+
+Or upload them on the **Ingest** page. See [Adding documents](/guide/adding-documents) for all the options.
 
 [Read the full guide →](/guide/getting-started)
