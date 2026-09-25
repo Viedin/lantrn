@@ -1,0 +1,176 @@
+@page "/admin"
+
+@using Lantrn.Services
+
+@inject DocumentStore Documents
+@inject EmbeddingService Embeddings
+
+<PageTitle>Dashboard</PageTitle>
+
+<div class="page-heading">
+    <span class="eyebrow">Dashboard</span>
+    <h1>Your library</h1>
+    <p class="lead-text">
+        Everything ingested into Lantrn, embedded with <code>@Embeddings.Model</code> and searchable by meaning.
+    </p>
+</div>
+
+<div class="d-flex flex-wrap gap-2 mb-4">
+    <a class="btn btn-primary" href="ingest"><i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i> Ingest files</a>
+    <a class="btn btn-outline-primary" href="crawl"><i class="bi bi-globe2" aria-hidden="true"></i> Crawl a site</a>
+    <a class="btn btn-outline-primary" href=""><i class="bi bi-search" aria-hidden="true"></i> Search</a>
+    <a class="btn btn-outline-primary" href="collections"><i class="bi bi-collection" aria-hidden="true"></i> Collections</a>
+</div>
+
+@if (overview is not null)
+{
+    <div class="row g-3 mb-4 stat-row">
+        <div class="col-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column gap-1">
+                    <span class="section-label">Collections</span>
+                    <span class="fs-3 fw-bold lh-sm text-body-emphasis">@overview.Collections.Count.ToString("N0")</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column gap-1">
+                    <span class="section-label">Documents</span>
+                    <span class="fs-3 fw-bold lh-sm text-body-emphasis">@overview.DocumentCount.ToString("N0")</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column gap-1">
+                    <span class="section-label">Chunks</span>
+                    <span class="fs-3 fw-bold lh-sm text-body-emphasis">@overview.ChunkCount.ToString("N0")</span>
+                </div>
+            </div>
+        </div>
+        <div class="col-6 col-lg-3">
+            <div class="card h-100">
+                <div class="card-body d-flex flex-column gap-1">
+                    <span class="section-label">Last ingest</span>
+                    <span class="fs-3 fw-bold lh-sm text-body-emphasis" title="@overview.LastIngestedAt?.ToLocalTime().ToString("g")">@Ago(overview.LastIngestedAt)</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    @if (overview.DocumentCount == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon" aria-hidden="true"><i class="bi bi-inbox"></i></span>
+            <h2>Nothing ingested yet</h2>
+            <p>Upload some files or crawl a documentation site, and they will show up here once they are stored.</p>
+        </div>
+    }
+    else
+    {
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <h2 class="section-label mb-3">Recently ingested</h2>
+                <div class="card overflow-hidden">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Document</th>
+                                    <th>Collection</th>
+                                    <th class="text-end">Chunks</th>
+                                    <th class="text-end">Ingested</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                @foreach (var document in overview.RecentDocuments)
+                                {
+                                    <tr>
+                                        <td><a class="fw-semibold text-body-emphasis text-break" href="documents/@document.Id">@document.Source</a></td>
+                                        <td>
+                                            <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@Uri.EscapeDataString(document.Collection)">@document.Collection</a>
+                                        </td>
+                                        <td class="text-end">@document.ChunkCount.ToString("N0")</td>
+                                        <td class="text-end text-nowrap" title="@document.IngestedAt.ToLocalTime().ToString("g")">@Ago(document.IngestedAt)</td>
+                                    </tr>
+                                }
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <h2 class="section-label mb-3">Collections</h2>
+                <div class="card overflow-hidden mb-4">
+                    <ul class="list-group list-group-flush">
+                        @foreach (var collection in overview.Collections.OrderByDescending(c => c.ChunkCount))
+                        {
+                            <li class="list-group-item">
+                                <div class="d-flex justify-content-between gap-2">
+                                    <a class="fw-semibold text-body-emphasis text-break" href="collections/@Uri.EscapeDataString(collection.Name)">@collection.Name</a>
+                                    <span class="small text-nowrap">@collection.DocumentCount.ToString("N0") docs · @collection.ChunkCount.ToString("N0") chunks</span>
+                                </div>
+                                <div class="progress mt-2" role="presentation" style="height: 0.35rem">
+                                    <div class="progress-bar" style="width: @Share(collection.ChunkCount)%"></div>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </div>
+
+                <h2 class="section-label mb-3">Top tags <span class="text-secondary">(@overview.DistinctTags.ToString("N0") in total)</span></h2>
+                @if (overview.TopTags.Count == 0)
+                {
+                    <p class="small">No tags yet. Add them when ingesting to filter searches.</p>
+                }
+                else
+                {
+                    <div class="tag-chips">
+                        @foreach (var tag in overview.TopTags)
+                        {
+                            <a class="tag-chip text-decoration-none" title="Search '@tag.Collection' tagged @tag.Name"
+                               href="search?collection=@Uri.EscapeDataString(tag.Collection)&tag=@Uri.EscapeDataString(tag.Name)">
+                                @tag.Name
+                                @if (overview.Collections.Count > 1)
+                                {
+                                    <span class="tag-count">@tag.Collection</span>
+                                }
+                                <span class="tag-count">@tag.Documents</span>
+                            </a>
+                        }
+                    </div>
+                }
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private LibraryOverview? overview;
+
+    protected override async Task OnInitializedAsync()
+    {
+        overview = await Documents.GetOverviewAsync(recentDocuments: 8, topTags: 15);
+    }
+
+    // Integer so the style attribute never picks up a culture's decimal comma.
+    private int Share(int chunks) =>
+        overview!.ChunkCount == 0 ? 0 : Math.Max(chunks > 0 ? 1 : 0, chunks * 100 / overview.ChunkCount);
+
+    private static string Ago(DateTime? utc)
+    {
+        if (utc is not { } value)
+        {
+            return "Never";
+        }
+
+        var elapsed = DateTime.UtcNow - value;
+        return elapsed.TotalMinutes < 1 ? "Just now"
+            : elapsed.TotalHours < 1 ? $"{(int)elapsed.TotalMinutes} min ago"
+            : elapsed.TotalDays < 1 ? $"{(int)elapsed.TotalHours} h ago"
+            : elapsed.TotalDays < 30 ? $"{(int)elapsed.TotalDays} d ago"
+            : value.ToLocalTime().ToString("d");
+    }
+}

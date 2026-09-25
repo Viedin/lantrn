@@ -1,0 +1,216 @@
+@implements IAsyncDisposable
+
+@inject QdrantStore Qdrant
+@inject DocumentStore Documents
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<PreviewPane> Log
+
+@if (Hit is not { } current)
+{
+    <aside class="preview preview-skeleton" aria-hidden="true">
+        <div class="preview-body">
+            <span class="skeleton-line" style="width: 50%; height: 0.9rem;"></span>
+            <span class="skeleton-line" style="width: 100%;"></span>
+            <span class="skeleton-line" style="width: 94%;"></span>
+            <span class="skeleton-line" style="width: 70%;"></span>
+        </div>
+    </aside>
+}
+else
+{
+    passages.TryGetValue(Index, out var passage);
+
+    <aside class="preview @(Open ? "is-open" : null)" aria-label="Preview">
+        <header class="preview-head">
+            <div class="preview-id">
+                <span class="preview-crumb">@SearchFormat.Crumb(Collection, current)</span>
+                <span class="preview-title">@current.Source</span>
+            </div>
+            <div class="preview-actions">
+                @* The browser's own viewer shows the page as printed, figures and all. *@
+                @if (current.FirstPage is { } pdfPage && passage is { HasPdf: true })
+                {
+                    <a class="btn btn-sm btn-outline-secondary" href="documents/@current.DocumentId/original#page=@pdfPage"
+                       target="_blank" rel="noopener" title="Open the PDF at this page">
+                        <i class="bi bi-file-earmark-pdf" aria-hidden="true"></i> p. @pdfPage
+                    </a>
+                }
+                <a class="btn btn-sm btn-outline-primary" href="@SearchFormat.DocumentHref(Navigation, current.DocumentId)">
+                    Open <i class="bi bi-arrow-up-right" aria-hidden="true"></i>
+                </a>
+                <button type="button" class="preview-close" @onclick="OnClose"
+                        title="Close preview" aria-label="Close preview">
+                    <i class="bi bi-x-lg" aria-hidden="true"></i>
+                </button>
+            </div>
+        </header>
+
+        <div class="preview-body" @ref="previewBody">
+            @if (current.Kind == DocumentKind.Ocr)
+            {
+                <a class="preview-image" href="documents/@current.DocumentId/original" target="_blank" title="Open the full-size image">
+                    <img src="documents/@current.DocumentId/original" alt="@current.Source" />
+                </a>
+            }
+
+            @if (passage is not null)
+            {
+                @if (passage.Error is not null)
+                {
+                    <div class="alert alert-warning small">Could not load the surrounding text: @passage.Error</div>
+                }
+
+                string? lastHeading = null;
+                foreach (var chunk in passage.Chunks)
+                {
+                    var isMatch = chunk.ChunkIndex == current.ChunkIndex;
+                    <section class="passage @(isMatch ? "is-match" : "is-context")" @key="chunk.ChunkIndex">
+                        @if (!string.IsNullOrEmpty(chunk.HeadingPath) && chunk.HeadingPath != lastHeading)
+                        {
+                            <span class="passage-heading">@chunk.HeadingPath</span>
+                        }
+                        <div class="markdown-body">@MarkdownRenderer.ToHtml(chunk.Content)</div>
+                    </section>
+                    lastHeading = chunk.HeadingPath;
+                }
+            }
+            else
+            {
+                <span class="skeleton-line" style="width: 100%;"></span>
+                <span class="skeleton-line" style="width: 94%;"></span>
+                <span class="skeleton-line" style="width: 70%;"></span>
+            }
+        </div>
+    </aside>
+}
+
+@code {
+    // Null while the search runs, which shows the skeleton.
+    [Parameter]
+    public SearchHit? Hit { get; set; }
+
+    // The hit's position in the results, which passages are cached by.
+    [Parameter]
+    public int Index { get; set; }
+
+    [Parameter]
+    public string Collection { get; set; } = string.Empty;
+
+    // On narrow screens the preview is a sheet that opens only when asked.
+    [Parameter]
+    public bool Open { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> Terms { get; set; } = [];
+
+    [Parameter]
+    public EventCallback OnClose { get; set; }
+
+    // The page gives each search a new pane, so the cache only ever holds this search's passages.
+    private readonly Dictionary<int, Passage> passages = [];
+    private CancellationTokenSource? passageLoad;
+    private int? shownIndex;
+
+    private ElementReference previewBody;
+    private IJSObjectReference? module;
+    private bool syncPending;
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Hit is null || Index == shownIndex)
+        {
+            return;
+        }
+
+        // A load for the previous selection would only re-sync the pane once it lands.
+        passageLoad?.Cancel();
+        shownIndex = Index;
+        syncPending = true;
+        await LoadPassageAsync(Index, Hit);
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!syncPending || Hit is null)
+        {
+            return;
+        }
+
+        syncPending = false;
+        try
+        {
+            module ??= await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Search/PreviewPane.razor.js");
+            await module.InvokeVoidAsync("sync", previewBody, Terms);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Navigated away before the render finished.
+        }
+    }
+
+    private async Task LoadPassageAsync(int index, SearchHit hit)
+    {
+        if (passages.ContainsKey(index))
+        {
+            return;
+        }
+
+        // The hit on its own, for when its neighbours can't be fetched.
+        var alone = new Passage([new PassageChunk(hit.ChunkIndex, hit.Content, hit.HeadingPath)]);
+        var (documentId, chunkIndex) = (hit.DocumentId, hit.ChunkIndex);
+
+        passageLoad = new CancellationTokenSource();
+        var cancellation = passageLoad.Token;
+        Passage loaded;
+
+        try
+        {
+            var chunks = await Qdrant.GetPassageAsync(Collection, documentId, chunkIndex, QdrantStore.PassageRadius, cancellation);
+            // Crawled PDFs are not kept, so have nothing to open.
+            var hasPdf = hit.FirstPage is not null
+                && await Documents.GetOriginalAsync(documentId, cancellation) is { ContentType: "application/pdf" };
+            loaded = (chunks.Count > 0 ? new Passage(chunks) : alone) with { HasPdf = hasPdf };
+        }
+        catch (Exception ex) when (!cancellation.IsCancellationRequested)
+        {
+            Log.LogWarning(ex, "Could not load the passage around chunk {ChunkIndex} of {DocumentId}", chunkIndex, documentId);
+            loaded = alone with { Error = ex.Message };
+        }
+        catch (Exception)
+        {
+            // Cancelled; the gRPC client reports that as an RpcException rather than OperationCanceledException.
+            return;
+        }
+
+        // Another selection took over while this loaded.
+        if (cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+
+        passages[index] = loaded;
+        syncPending = true;
+    }
+
+    private sealed record Passage(IReadOnlyList<PassageChunk> Chunks, string? Error = null, bool HasPdf = false);
+
+    public async ValueTask DisposeAsync()
+    {
+        passageLoad?.Cancel();
+        passageLoad?.Dispose();
+
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("dispose");
+                await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // The circuit is gone, and the page with it.
+            }
+        }
+    }
+}

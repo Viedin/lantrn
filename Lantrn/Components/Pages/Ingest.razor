@@ -1,0 +1,219 @@
+@page "/ingest"
+@rendermode InteractiveServer
+
+@using Lantrn.Infra
+@using Lantrn.Services
+
+@implements IDisposable
+
+@inject DocumentExtractor Extractor
+@inject EmbeddingService Embeddings
+@inject VisionOcrService Vision
+@inject DocumentStore Documents
+@inject ILogger<Ingest> Log
+
+<PageTitle>Ingest documents</PageTitle>
+
+<div class="page-heading">
+    <span class="eyebrow">Ingest</span>
+    <h1>Ingest documents</h1>
+    <p class="lead-text">
+        Extract &rarr; markdown &rarr; chunk by section through Xberg, then embed with @Embeddings.Model. Each file is stored in the collection as soon as it is done.
+    </p>
+</div>
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <div class="mb-3">
+            <label class="form-label" for="documents">Documents (PDF, Markdown, text, HTML or images)</label>
+            <InputFile id="documents" class="form-control" accept="@DocumentExtractor.AcceptAttribute" multiple OnChange="OnFilesSelected" />
+            @if (files.Count > 0)
+            {
+                <div class="form-text">@files.Count @(files.Count == 1 ? "file" : "files") selected</div>
+            }
+            <div class="form-text">Images are transcribed by @Vision.Model and the original image is kept alongside the text.</div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <CollectionSelect Id="collection" Collections="collections" @bind-Value="collection" />
+            </div>
+            <div class="col-md-8">
+                <label class="form-label" for="tags">Tags</label>
+                <input id="tags" class="form-control" @bind="tagsInput" placeholder="cs-docs, internal" />
+                <div class="form-text">Comma separated. Applied to every file in this batch and usable as a search filter.</div>
+            </div>
+        </div>
+
+        <details class="disclosure mb-3">
+            <summary>Advanced settings</summary>
+            <div class="row g-3">
+                <ChunkingFields Options="options" />
+            </div>
+        </details>
+
+        <button class="btn btn-primary" @onclick="RunAsync" disabled="@(files.Count == 0 || string.IsNullOrEmpty(collection) || busy)">
+            @if (busy)
+            {
+                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+            }
+            Ingest into @(string.IsNullOrEmpty(collection) ? "collection" : $"'{collection}'")
+        </button>
+    </div>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (progress is not null)
+{
+    <IngestProgress Tally="progress" Unit="files" Busy="busy" OnStop="Stop" />
+}
+
+<IngestResults Entries="results" />
+
+@code {
+    private const long MaxFileSize = 100 * 1024 * 1024;
+
+    private List<IBrowserFile> files = [];
+    private List<IngestResults.Entry> results = [];
+    private string? error;
+    private bool busy;
+    private IngestProgress.State? progress;
+    private CancellationTokenSource? cancellation;
+
+    private string tagsInput = string.Empty;
+    private readonly IngestOptions options = new();
+    private IReadOnlyList<CollectionSummary> collections = [];
+    private string collection = string.Empty;
+
+    [SupplyParameterFromQuery(Name = "collection")]
+    public string? CollectionParameter { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        collections = await Documents.ListCollectionsAsync();
+        collection = CollectionSelect.Pick(collections, CollectionParameter);
+    }
+
+    // Blazor only re-renders an event handler at its first await and on completion,
+    // so batch loops call this to show each step.
+    private void ReportProgress(string step)
+    {
+        progress!.Step = step;
+        StateHasChanged();
+    }
+
+    private void Stop()
+    {
+        cancellation?.Cancel();
+        progress!.Stopping = true;
+    }
+
+    private void OnFilesSelected(InputFileChangeEventArgs e)
+    {
+        results = [];
+        error = null;
+        progress = null;
+
+        var selected = e.GetMultipleFiles(e.FileCount);
+        files = selected.Where(f => DocumentExtractor.TryGetContentType(f.Name, out _)).ToList();
+
+        var rejected = selected.Except(files).Select(f => f.Name).ToList();
+        if (rejected.Count > 0)
+        {
+            error = $"Skipped unsupported files: {string.Join(", ", rejected)}. Supported: {string.Join(", ", DocumentExtractor.SupportedTypes.Keys)}.";
+        }
+
+        Log.LogInformation("Selected {Count} files ({Rejected} rejected): {FileNames}",
+            files.Count, rejected.Count, string.Join(", ", files.Select(f => f.Name)));
+    }
+
+    private async Task RunAsync()
+    {
+        error = options.Validate();
+        if (files.Count == 0 || string.IsNullOrEmpty(collection) || error is not null)
+        {
+            return;
+        }
+
+        busy = true;
+        results = [];
+        progress = new IngestProgress.State { Total = files.Count };
+        cancellation = new CancellationTokenSource();
+        var cancellationToken = cancellation.Token;
+        var tags = DocumentStore.ParseTags(tagsInput);
+
+        try
+        {
+            foreach (var file in files)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var entry = new IngestResults.Entry(file.Name);
+                results.Add(entry);
+
+                try
+                {
+                    ReportProgress($"Reading {file.Name}");
+                    using var stream = file.OpenReadStream(MaxFileSize, cancellationToken);
+                    using var buffer = new MemoryStream();
+                    await stream.CopyToAsync(buffer, cancellationToken);
+
+                    var bytes = buffer.ToArray();
+                    IngestResult extracted;
+                    if (DocumentExtractor.IsImage(file.Name))
+                    {
+                        ReportProgress($"Reading {file.Name} with {Vision.Model}");
+                        var markdown = await Vision.ReadImageAsync(bytes, file.Name, cancellationToken);
+
+                        ReportProgress($"Chunking {file.Name}");
+                        extracted = await Extractor.ChunkMarkdownAsync(markdown, file.Name, DocumentKind.Ocr, options, cancellationToken);
+                    }
+                    else
+                    {
+                        ReportProgress($"Extracting {file.Name}");
+                        extracted = await Extractor.IngestAsync(bytes, file.Name, options, cancellationToken);
+                    }
+
+                    ReportProgress($"Embedding {extracted.Chunks.Count} chunks from {file.Name}");
+                    extracted = extracted with { Chunks = await Embeddings.EmbedChunksAsync(extracted.Chunks, file.Name, cancellationToken) };
+
+                    // Not cancellable: a store cut short would leave the database and Qdrant out of step.
+                    ReportProgress($"Storing {file.Name} in '{collection}'");
+                    var original = DocumentExtractor.KeepsOriginal(file.Name, extracted.Kind) ? bytes : null;
+                    progress.Chunks += (await Documents.StoreAsync(collection, file.Name, extracted, tags, original)).ChunkCount;
+                    progress.Stored++;
+                    entry.Result = extracted;
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    Log.LogError(ex, "Ingest of {FileName} failed", file.Name);
+                    entry.Error = ex.Message;
+                    progress.Failed++;
+                }
+
+                progress.Done++;
+            }
+
+            var tagText = tags.Count > 0 ? $" tagged [{string.Join(", ", tags)}]" : string.Empty;
+            progress.Step = $"Stored {progress.Stored} of {files.Count} files in '{collection}'{tagText}.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The file that was in flight when Stop was pressed has neither a result nor an error.
+            results.RemoveAll(r => r.Result is null && r.Error is null);
+            progress.Step = $"Stopped. Stored {progress.Stored} of {files.Count} files in '{collection}'.";
+        }
+        finally
+        {
+            busy = false;
+            cancellation.Dispose();
+            cancellation = null;
+        }
+    }
+
+    public void Dispose() => cancellation?.Cancel();
+}

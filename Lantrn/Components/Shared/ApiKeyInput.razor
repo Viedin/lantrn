@@ -1,0 +1,30 @@
+@* The stored key never reaches the browser: this only takes a replacement, and blank keeps what is saved. *@
+<label class="form-label" for="@Id">API key</label>
+<div class="input-group">
+    <input id="@Id" type="password" class="form-control" autocomplete="off"
+           value="@NewKey" @onchange="e => NewKeyChanged.InvokeAsync(e.Value?.ToString())"
+           placeholder="@(HasKey ? "Saved — leave blank to keep" : "Not needed for most local servers")" />
+    @if (HasKey)
+    {
+        <button type="button" class="btn btn-outline-danger" @onclick="OnRemove" title="Remove the saved key">
+            Remove
+        </button>
+    }
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool HasKey { get; set; }
+
+    [Parameter]
+    public string? NewKey { get; set; }
+
+    [Parameter]
+    public EventCallback<string?> NewKeyChanged { get; set; }
+
+    [Parameter]
+    public EventCallback OnRemove { get; set; }
+}

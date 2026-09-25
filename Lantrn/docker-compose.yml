@@ -1,0 +1,29 @@
+services:
+  lantrn:
+    image: lantrn:latest
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      Qdrant__Host: qdrant
+      Qdrant__Port: 6334
+      # Endpoints can also be set later on the Settings page.
+      # Embeddings__BaseUrl: http://host.docker.internal:1234/v1
+      # Embeddings__Model: text-embedding-qwen3-embedding-4b
+    volumes:
+      - lantrn-data:/app/data
+      # Files here are synced into the default 'documents' collection.
+      - ./documents:/app/data/documents
+    depends_on:
+      - qdrant
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    volumes:
+      - qdrant-data:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  lantrn-data:
+  qdrant-data:

@@ -1,0 +1,133 @@
+@page "/account/register"
+
+@using Lantrn.Services
+
+@inject AccountService Accounts
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Create account</PageTitle>
+
+@if (mode == Mode.Closed)
+{
+    <h1>Invite only</h1>
+    <p class="auth-lead">
+        Accounts are created by invitation. If you were sent a link, it may have expired; ask an admin for a new one.
+    </p>
+    <a class="btn btn-primary w-100" href="account/login">Sign in</a>
+}
+else
+{
+    <h1>Create account</h1>
+    <p class="auth-lead">
+        @(mode == Mode.FirstAdmin
+            ? "You're the first one here. This account will manage Lantrn: its documents, settings and users."
+            : "You've been invited to Lantrn. Choose a password to finish.")
+    </p>
+
+    @if (errors.Count > 0)
+    {
+        <div class="alert alert-danger">
+            @foreach (var e in errors)
+            {
+                <div>@e</div>
+            }
+        </div>
+    }
+
+    <EditForm Model="Input" method="post" OnValidSubmit="RegisterAsync" FormName="register">
+        <DataAnnotationsValidator />
+
+        <div class="mb-3">
+            <label class="form-label" for="email">Email</label>
+            @if (invitedEmail is not null)
+            {
+                <input id="email" type="email" class="form-control" value="@invitedEmail" autocomplete="username" readonly />
+            }
+            else
+            {
+                <InputText id="email" type="email" class="form-control" @bind-Value="Input.Email" autocomplete="username" autofocus />
+                <ValidationMessage For="() => Input.Email" />
+            }
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label" for="password">Password</label>
+            <InputText id="password" type="password" class="form-control" @bind-Value="Input.Password" autocomplete="new-password" autofocus="@(invitedEmail is not null)" />
+            <ValidationMessage For="() => Input.Password" />
+            <div class="form-text">At least 8 characters with upper and lower case, a digit and a symbol.</div>
+        </div>
+
+        <div class="mb-4">
+            <label class="form-label" for="confirm">Confirm password</label>
+            <InputText id="confirm" type="password" class="form-control" @bind-Value="Input.ConfirmPassword" autocomplete="new-password" />
+            <ValidationMessage For="() => Input.ConfirmPassword" />
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">Create account</button>
+    </EditForm>
+
+    <p class="auth-switch">
+        Already have an account? <a href="account/login">Sign in</a>
+    </p>
+}
+
+@code {
+    private enum Mode { Closed, FirstAdmin, Invited }
+
+    [SupplyParameterFromForm]
+    private RegisterInput Input { get; set; } = null!;
+
+    [SupplyParameterFromQuery(Name = "invite")]
+    private string? Invite { get; set; }
+
+    private Mode mode;
+    private string? invitedEmail;
+    private List<string> errors = [];
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+
+        if (!await Accounts.HasUsersAsync())
+        {
+            mode = Mode.FirstAdmin;
+            return;
+        }
+
+        invitedEmail = await Accounts.FindInvitationAsync(Invite);
+        mode = invitedEmail is null ? Mode.Closed : Mode.Invited;
+        if (invitedEmail is not null)
+        {
+            // The invite fixes the address; the validator still wants the field filled.
+            Input.Email = invitedEmail;
+        }
+    }
+
+    private async Task RegisterAsync()
+    {
+        var (result, user) = await Accounts.RegisterAsync(Input.Email, Input.Password, Invite);
+        if (user is null)
+        {
+            errors = result.Errors.Select(e => e.Description).ToList();
+            return;
+        }
+
+        await SignInManager.SignInAsync(user, isPersistent: false);
+        Navigation.NavigateTo(mode == Mode.FirstAdmin ? "admin" : "", forceLoad: true);
+    }
+
+    private sealed class RegisterInput
+    {
+        [Required, EmailAddress]
+        public string Email { get; set; } = "";
+
+        [Required, StringLength(100, MinimumLength = 8, ErrorMessage = "The password must be at least 8 characters.")]
+        [DataType(DataType.Password)]
+        public string Password { get; set; } = "";
+
+        [Compare(nameof(Password), ErrorMessage = "The passwords do not match.")]
+        [DataType(DataType.Password)]
+        public string ConfirmPassword { get; set; } = "";
+    }
+}

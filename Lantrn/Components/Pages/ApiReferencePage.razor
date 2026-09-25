@@ -1,0 +1,303 @@
+@page "/api/reference"
+@attribute [AllowAnonymous]
+
+@using Lantrn.Api
+@using Microsoft.AspNetCore.OpenApi
+
+@inject NavigationManager Navigation
+
+@* Static rendering from the same OpenAPI document clients download, so the two can't disagree. Public, like the
+   document itself: it describes the API, and every call still needs an admin's key. *@
+
+<PageTitle>API reference</PageTitle>
+
+<div class="api-reference">
+    <div class="page-heading">
+        <span class="eyebrow">Developers</span>
+        <h1>@reference.Title</h1>
+        @if (reference.Description is not null)
+        {
+            <p class="lead-text">@reference.Description</p>
+        }
+        <div class="api-meta">
+            <span class="metric-pill">@reference.Version</span>
+            <code>@baseUrl@PublicApi.BasePath</code>
+            <a class="btn btn-sm btn-outline-secondary" href="@PublicApi.SpecPath.TrimStart('/')" download>
+                <i class="bi bi-filetype-json" aria-hidden="true"></i> OpenAPI document
+            </a>
+            <AuthorizeView Roles="@Roles.Admin">
+                <a class="btn btn-sm btn-primary" href="api-keys">
+                    <i class="bi bi-key" aria-hidden="true"></i> Manage API keys
+                </a>
+            </AuthorizeView>
+        </div>
+    </div>
+
+    <div class="api-layout">
+        <nav class="api-toc" aria-label="On this page">
+            <div class="section-label">Overview</div>
+            <a href="@Link("authentication")">Authentication</a>
+            <a href="@Link("errors")">Errors</a>
+
+            @foreach (var group in reference.Groups)
+            {
+                <div class="section-label">@group.Name</div>
+                @foreach (var operation in group.Operations)
+                {
+                    <a href="@Link(operation.Anchor)">
+                        <span class="api-method @MethodClass(operation.Method)">@operation.Method</span>
+                        <span>@operation.Summary</span>
+                    </a>
+                }
+            }
+
+            @if (reference.Schemas.Count > 0)
+            {
+                <div class="section-label">Schemas</div>
+                @foreach (var schema in reference.Schemas)
+                {
+                    <a href="@Link(SchemaAnchor(schema.Name))" class="api-toc-schema">@schema.Name</a>
+                }
+            }
+        </nav>
+
+        <div class="api-content">
+            <section id="authentication" class="card card-panel">
+                <div class="card-body">
+                    <h2>Authentication</h2>
+                    <p>@reference.AuthDescription</p>
+                    <p>
+                        Admins create keys under <a href="api-keys">API keys</a>. Each key is shown once; keep it
+                        somewhere safe, such as an environment variable:
+                    </p>
+                    <pre class="api-code"><code>export LANTRN_API_KEY="lnt_…"
+curl "@baseUrl@PublicApi.BasePath/collections" \
+  -H "Authorization: Bearer $LANTRN_API_KEY"</code></pre>
+                </div>
+            </section>
+
+            <section id="errors" class="card card-panel">
+                <div class="card-body">
+                    <h2>Errors</h2>
+                    <p>
+                        Failures come back as <a href="https://www.rfc-editor.org/rfc/rfc9457" target="_blank" rel="noopener">problem details</a>
+                        with a matching status code. Validation errors add an <code>errors</code> object keyed by field.
+                    </p>
+                    <pre class="api-code"><code>{
+  "type": "https://tools.ietf.org/html/rfc9110#section-15.5.10",
+  "title": "Conflict",
+  "status": 409,
+  "detail": "A collection named 'handbook' already exists."
+}</code></pre>
+                </div>
+            </section>
+
+            @foreach (var group in reference.Groups)
+            {
+                <section class="api-group">
+                    <h2 class="api-group-title">@group.Name</h2>
+                    @if (group.Description is not null)
+                    {
+                        <p class="api-group-lead">@group.Description</p>
+                    }
+
+                    @foreach (var operation in group.Operations)
+                    {
+                        <article id="@operation.Anchor" class="card card-panel api-operation">
+                            <div class="card-body">
+                                <div class="api-op-head">
+                                    <span class="api-method @MethodClass(operation.Method)">@operation.Method</span>
+                                    <code class="api-path">@PathSegments(operation.Path)</code>
+                                </div>
+                                <h3>@operation.Summary</h3>
+                                @if (operation.Description is not null)
+                                {
+                                    <p>@operation.Description</p>
+                                }
+
+                                <div class="api-op-grid">
+                                    <div class="api-op-details">
+                                        @if (operation.Parameters.Count > 0)
+                                        {
+                                            <h4 class="section-label">Parameters</h4>
+                                            @FieldTable(operation.Parameters)
+                                        }
+
+                                        @if (operation.RequestBody is { } body)
+                                        {
+                                            <h4 class="section-label">
+                                                Request body
+                                                <span class="api-content-type">@body.ContentType</span>
+                                            </h4>
+                                            @if (body.Fields.Count > 0)
+                                            {
+                                                @FieldTable(body.Fields)
+                                            }
+                                            else
+                                            {
+                                                <p>@TypeLink(body.Type)</p>
+                                            }
+                                        }
+
+                                        <h4 class="section-label">Responses</h4>
+                                        <ul class="api-responses">
+                                            @foreach (var response in operation.Responses)
+                                            {
+                                                <li>
+                                                    <span class="api-status @StatusClass(response.Status)">@response.Status</span>
+                                                    <span class="api-response-text">
+                                                        @response.Description
+                                                        @if (response.Type is { } type)
+                                                        {
+                                                            <span class="api-response-type">@TypeLink(type)</span>
+                                                        }
+                                                    </span>
+                                                </li>
+                                            }
+                                        </ul>
+                                    </div>
+
+                                    <div class="api-op-examples">
+                                        <div class="api-example-label">Request</div>
+                                        <pre class="api-code"><code>@operation.Example</code></pre>
+                                        @foreach (var response in operation.Responses.Where(r => r.Example is not null).Take(1))
+                                        {
+                                            <div class="api-example-label">Response <span class="api-status @StatusClass(response.Status)">@response.Status</span></div>
+                                            <pre class="api-code"><code>@response.Example</code></pre>
+                                        }
+                                    </div>
+                                </div>
+                            </div>
+                        </article>
+                    }
+                </section>
+            }
+
+            @if (reference.Schemas.Count > 0)
+            {
+                <section class="api-group">
+                    <h2 class="api-group-title">Schemas</h2>
+                    <p class="api-group-lead">The shapes the endpoints send and receive, as JSON with camelCase names.</p>
+
+                    @foreach (var schema in reference.Schemas)
+                    {
+                        <article id="@SchemaAnchor(schema.Name)" class="card card-panel api-operation">
+                            <div class="card-body">
+                                <h3 class="api-schema-name">@schema.Name</h3>
+                                @if (schema.Description is not null)
+                                {
+                                    <p>@schema.Description</p>
+                                }
+                                @if (schema.EnumValues.Count > 0)
+                                {
+                                    <p class="mb-0">
+                                        One of
+                                        @foreach (var value in schema.EnumValues)
+                                        {
+                                            <code class="me-1">@value</code>
+                                        }
+                                    </p>
+                                }
+                                @if (schema.Fields.Count > 0)
+                                {
+                                    @FieldTable(schema.Fields)
+                                }
+                            </div>
+                        </article>
+                    }
+                </section>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Inject(Key = PublicApi.DocumentName)]
+    private IOpenApiDocumentProvider Documents { get; set; } = null!;
+
+    private ApiReference reference = null!;
+    private string baseUrl = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        baseUrl = Navigation.BaseUri.TrimEnd('/');
+        reference = ApiReference.From(await Documents.GetOpenApiDocumentAsync(), baseUrl);
+    }
+
+    // With a base href, a bare "#x" would point at the home page; the page path keeps it on this one.
+    private static string Link(string anchor) => $"{PublicApi.ReferencePath.TrimStart('/')}#{anchor}";
+
+    private static string SchemaAnchor(string name) => "schema-" + name.ToLowerInvariant();
+
+    private static string MethodClass(string method) => "api-method-" + method.ToLowerInvariant();
+
+    private static string StatusClass(string status) => status[0] switch
+    {
+        '2' => "api-status-ok",
+        '4' => "api-status-client",
+        _ => "api-status-server",
+    };
+
+    // Path parameters stand out from the fixed segments.
+    private static RenderFragment PathSegments(string path) => __builder =>
+    {
+        foreach (var part in System.Text.RegularExpressions.Regex.Split(path, @"(\{[^}]+\})"))
+        {
+            if (part.StartsWith('{'))
+            {
+                <span class="api-path-param">@part</span>
+            }
+            else
+            {
+                @part
+            }
+        }
+    };
+
+    private RenderFragment TypeLink(ApiType type) =>
+        @<span class="api-type">
+            @if (type.SchemaName is { } name)
+            {
+                <a href="@Link(SchemaAnchor(name))">@type.Text</a>
+            }
+            else
+            {
+                @type.Text
+            }
+        </span>;
+
+    private RenderFragment FieldTable(IReadOnlyList<ApiField> fields) =>
+        @<div class="table-responsive">
+            <table class="table api-fields">
+                <tbody>
+                    @foreach (var field in fields)
+                    {
+                        <tr>
+                            <td class="api-field-name">
+                                <code>@field.Name</code>
+                                @if (field.Required)
+                                {
+                                    <span class="api-required">required</span>
+                                }
+                                @if (field.Location is { } location)
+                                {
+                                    <span class="api-location">@location</span>
+                                }
+                            </td>
+                            <td>
+                                @TypeLink(field.Type)
+                                @if (field.Description is not null)
+                                {
+                                    <div class="api-field-description">@field.Description</div>
+                                }
+                                @if (field.Constraints is not null)
+                                {
+                                    <div class="api-field-constraints">@field.Constraints</div>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>;
+}

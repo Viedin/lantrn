@@ -1,0 +1,140 @@
+@using System.Globalization
+
+@inject NavigationManager Navigation
+
+@if (Hits is null)
+{
+    @* Skeletons keep the page from collapsing while the query embeds. *@
+    <section class="results-pane" aria-hidden="true">
+        <div class="results-head">
+            <span class="skeleton-line" style="width: 9rem;"></span>
+        </div>
+        <ol class="result-list">
+            @for (var i = 0; i < 4; i++)
+            {
+                <li class="result-row is-skeleton">
+                    <div class="result-main">
+                        <span class="skeleton-line" style="width: 35%;"></span>
+                        <span class="skeleton-line" style="width: 55%; height: 0.9rem;"></span>
+                        <span class="skeleton-line" style="width: 100%;"></span>
+                        <span class="skeleton-line" style="width: 80%;"></span>
+                    </div>
+                </li>
+            }
+        </ol>
+    </section>
+}
+else
+{
+    <section class="results-pane" aria-label="Results">
+        <div class="results-head">
+            <h2 class="section-label mb-0">
+                @Hits.Count @(Hits.Count == 1 ? "match" : "matches")
+            </h2>
+            <span class="results-detail">
+                <span class="metric-pill metric-pill-neutral">@Collection</span>
+                @foreach (var tag in Tags)
+                {
+                    <span class="metric-pill">@tag</span>
+                }
+                @if (Kind is { } filteredKind)
+                {
+                    <span class="metric-pill">@SearchOptions.KindLabel(filteredKind)</span>
+                }
+                <span>@ElapsedMs ms</span>
+            </span>
+        </div>
+
+        <ol class="result-list">
+            @for (var i = 0; i < Hits.Count; i++)
+            {
+                var index = i;
+                var hit = Hits[index];
+                <li class="result-row tone-@(index % 5) @(index == Selected ? "is-selected" : null)" @key="index"
+                    @onclick="() => OnSelect.InvokeAsync(index)">
+                    <div class="result-main">
+                        <div class="result-crumb">
+                            @if (index < CitedCount)
+                            {
+                                <span class="cite" title="Source @(index + 1) of the answer">@(index + 1)</span>
+                            }
+                            <span class="result-crumb-text">@SearchFormat.Crumb(Collection, hit)</span>
+                            <span class="score-meter" title="@ScoreTitle: @hit.Score.ToString("F3")">
+                                <span style="width: @ScoreWidth(hit.Score)%"></span>
+                            </span>
+                        </div>
+
+                        <a class="result-title" href="@SearchFormat.DocumentHref(Navigation, hit.DocumentId)" @onclick:stopPropagation="true">@hit.Source</a>
+
+                        <p class="result-snippet">@Snippets[index]</p>
+
+                        @if (hit.Tags.Count > 0 || hit.Kind == DocumentKind.Ocr)
+                        {
+                            <span class="result-tags">
+                                @if (hit.Kind == DocumentKind.Ocr)
+                                {
+                                    <span class="metric-pill" title="Text read from an image"><i class="bi bi-image" aria-hidden="true"></i> OCR</span>
+                                }
+                                @foreach (var tag in hit.Tags)
+                                {
+                                    <span class="metric-pill metric-pill-neutral">@tag</span>
+                                }
+                            </span>
+                        }
+                    </div>
+
+                    @if (hit.Kind == DocumentKind.Ocr)
+                    {
+                        <img class="result-thumb" src="documents/@hit.DocumentId/original" alt="" loading="lazy" />
+                    }
+                </li>
+            }
+        </ol>
+    </section>
+}
+
+@code {
+    // Null while the search runs, which shows the skeleton.
+    [Parameter]
+    public IReadOnlyList<SearchHit>? Hits { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<MarkupString> Snippets { get; set; } = [];
+
+    [Parameter]
+    public int Selected { get; set; } = -1;
+
+    [Parameter]
+    public EventCallback<int> OnSelect { get; set; }
+
+    [Parameter]
+    public string Collection { get; set; } = string.Empty;
+
+    [Parameter]
+    public IReadOnlyList<string> Tags { get; set; } = [];
+
+    [Parameter]
+    public DocumentKind? Kind { get; set; }
+
+    [Parameter]
+    public bool Hybrid { get; set; }
+
+    [Parameter]
+    public long ElapsedMs { get; set; }
+
+    // How many of the top hits an answer cites, which get its numbered markers.
+    [Parameter]
+    public int CitedCount { get; set; }
+
+    // Fusion scores only mean something relative to each other, so hybrid meters are scaled to the top hit.
+    private string ScoreWidth(float score)
+    {
+        var fraction = Hybrid && Hits is [var top, ..] && top.Score > 0 ? score / top.Score : score;
+        // The meter is an inline style, so the width must not pick up a locale that formats decimals with a comma.
+        return (Math.Clamp(fraction, 0f, 1f) * 100f).ToString("F1", CultureInfo.InvariantCulture);
+    }
+
+    private string ScoreTitle => Hybrid
+        ? "Rank fusion of meaning and keyword matches, relative to the top hit"
+        : "Cosine similarity";
+}

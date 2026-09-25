@@ -1,0 +1,212 @@
+/* The only chrome on the page: the logo in the top-left corner, back to search, and a menu button
+   in the top-right. Both scroll away with the page so they never cover the pinned search bar. */
+.home-link {
+    position: absolute;
+    top: 1rem;
+    left: 1rem;
+    z-index: 3;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    height: 2.6rem;
+    padding-inline: 0.4rem 0.6rem;
+    border-radius: var(--bs-border-radius);
+    color: var(--bo-ink);
+    font-weight: 650;
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+}
+
+.home-link:hover {
+    background-color: var(--bo-surface-sunken);
+}
+
+.home-link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.25rem var(--bo-focus-ring);
+}
+
+.home-link img {
+    width: 1.8rem;
+    height: 1.8rem;
+}
+
+.menu-toggle {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    z-index: 3;
+    display: grid;
+    place-items: center;
+    width: 2.6rem;
+    height: 2.6rem;
+    padding: 0;
+    cursor: pointer;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius);
+    box-shadow: var(--bo-shadow-sm);
+    color: var(--bo-ink);
+    font-size: 1.35rem;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.menu-toggle:hover {
+    border-color: var(--bo-accent);
+    color: var(--bo-accent-text);
+}
+
+.menu-toggle:focus-visible,
+.menu-close:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.25rem var(--bo-focus-ring);
+}
+
+/* The panel drops from the same corner as the button, over the page. */
+.site-menu {
+    position: fixed;
+    inset: 1rem 1rem auto auto;
+    width: min(18rem, calc(100vw - 2rem));
+    max-height: calc(100vh - 2rem);
+    margin: 0;
+    padding: 0.75rem;
+    overflow-y: auto;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: var(--bo-shadow-md);
+    color: var(--bo-ink);
+}
+
+.site-menu:popover-open {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.menu-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.1rem 0.1rem 0.5rem 0.4rem;
+    border-bottom: 1px solid var(--bo-line);
+}
+
+.menu-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    color: var(--bo-ink);
+    font-weight: 650;
+    text-decoration: none;
+}
+
+.menu-brand .auth-brand-mark {
+    width: 1.8rem;
+    height: 1.8rem;
+    border-radius: 0.5rem;
+    font-size: 0.95rem;
+}
+
+.menu-close {
+    display: grid;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-radius: var(--bs-border-radius-sm);
+    color: var(--bo-ink-muted);
+}
+
+.menu-close:hover {
+    background-color: var(--bo-surface-sunken);
+    color: var(--bo-ink);
+}
+
+.menu-links {
+    display: flex;
+    flex-direction: column;
+}
+
+.menu-section {
+    padding: 0.85rem 0.6rem 0.3rem;
+    font-size: 0.66rem;
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--bo-ink-muted);
+}
+
+.menu-links ::deep .menu-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    height: 2.4rem;
+    padding-inline: 0.6rem;
+    border-radius: var(--bs-border-radius-sm);
+    color: var(--bo-ink);
+    font-size: 0.92rem;
+    font-weight: 500;
+    text-decoration: none;
+    transition: background-color 0.15s ease;
+}
+
+.menu-links ::deep .menu-link:hover {
+    background-color: var(--bo-surface-sunken);
+}
+
+.menu-links ::deep .menu-link.active {
+    background-color: color-mix(in srgb, var(--nav-tone, var(--bo-accent)) 12%, var(--bo-surface));
+    font-weight: 600;
+}
+
+.menu-links ::deep .menu-link:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.2rem var(--bo-focus-ring);
+}
+
+.menu-links .bi {
+    width: 1.1rem;
+    margin-right: 0.7rem;
+    text-align: center;
+    color: var(--nav-tone, var(--bo-ink-muted));
+}
+
+/* Every destination keeps its own colour, on its icon and on its fill when it is the current page */
+.menu-links ::deep a[href=""] { --nav-tone: var(--bo-amber); }
+.menu-links ::deep a[href="admin"] { --nav-tone: var(--bo-blue); }
+.menu-links ::deep a[href="collections"] { --nav-tone: var(--bo-violet); }
+.menu-links ::deep a[href="ingest"] { --nav-tone: var(--bo-coral); }
+.menu-links ::deep a[href="crawl"] { --nav-tone: var(--bo-mint); }
+.menu-links ::deep a[href="admin/users"] { --nav-tone: var(--bo-pink); }
+
+.menu-account {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 0.75rem 0.1rem 0.1rem;
+    border-top: 1px solid var(--bo-line);
+}
+
+.menu-account form {
+    margin: 0;
+}
+
+.menu-user {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding-inline: 0.5rem;
+    color: var(--bo-ink-muted);
+    font-size: 0.82rem;
+    overflow: hidden;
+}
+
+.menu-user span:last-child {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

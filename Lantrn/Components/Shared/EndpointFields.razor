@@ -1,0 +1,102 @@
+@using Lantrn.Infra
+@using Lantrn.Services
+
+@implements IDisposable
+
+@inject ModelCatalog Catalog
+
+@* Endpoint, model and key of one OpenAI-compatible server, as columns of the caller's row.
+   A typed key goes straight into Settings, which the caller edits as a copy until it saves. *@
+<div class="col-md-6">
+    <label class="form-label" for="@($"{Id}-url")">Endpoint</label>
+    <input id="@($"{Id}-url")" class="form-control" @bind="Settings.BaseUrl" @bind:after="LoadModelsAsync" placeholder="http://localhost:1234/v1" />
+    <div class="form-text">Include the version segment, e.g. /v1.</div>
+</div>
+<div class="col-md-6">
+    <ModelSelect Id="@($"{Id}-model")" @bind-Value="Settings.Model"
+                 Models="models" Loading="loading" Error="@error"
+                 OnRefresh="LoadModelsAsync" Preferred="@Preferred" PreferredLabel="@PreferredLabel" />
+</div>
+<div class="col-md-6">
+    <ApiKeyInput Id="@($"{Id}-key")" HasKey="@(!string.IsNullOrEmpty(Settings.ApiKey))"
+                 @bind-NewKey="newKey" @bind-NewKey:after="OnKeyTypedAsync" OnRemove="RemoveKey" />
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IEndpointSettings Settings { get; set; } = default!;
+
+    // Case-insensitive fragment that sorts matching models into their own group, e.g. "embed".
+    [Parameter]
+    public string? Preferred { get; set; }
+
+    [Parameter]
+    public string PreferredLabel { get; set; } = "Suggested";
+
+    private string? newKey;
+    private IReadOnlyList<string>? models;
+    private bool loading;
+    private string? error;
+    private CancellationTokenSource? load;
+    private IEndpointSettings? shown;
+
+    // A new settings object (first render, a save or a restore) starts over. Skipped while
+    // prerendering, which would ask each endpoint twice.
+    protected override async Task OnParametersSetAsync()
+    {
+        if (ReferenceEquals(Settings, shown) || !RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        shown = Settings;
+        newKey = null;
+        await LoadModelsAsync();
+    }
+
+    private async Task OnKeyTypedAsync()
+    {
+        if (!string.IsNullOrWhiteSpace(newKey))
+        {
+            Settings.ApiKey = newKey.Trim();
+        }
+        await LoadModelsAsync();
+    }
+
+    private void RemoveKey()
+    {
+        Settings.ApiKey = null;
+        newKey = null;
+    }
+
+    private async Task LoadModelsAsync()
+    {
+        // Only the newest request may update the list, so a slow answer for an old endpoint cannot win.
+        load?.Cancel();
+        var cancellation = load = new CancellationTokenSource();
+
+        loading = true;
+        error = null;
+
+        try
+        {
+            models = await Catalog.ListAsync(Settings.BaseUrl, Settings.ApiKey, cancellation.Token);
+        }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            models = null;
+            error = ex.Message;
+        }
+
+        loading = false;
+    }
+
+    public void Dispose() => load?.Cancel();
+}

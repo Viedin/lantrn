@@ -1,0 +1,107 @@
+@* A dropdown of the models the endpoint lists, falling back to free text when it lists none or cannot be reached. *@
+<label class="form-label" for="@Id">Model</label>
+<div class="input-group">
+    @if (ShowDropdown)
+    {
+        <select id="@Id" class="form-select" value="@Value" @onchange="e => ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty)">
+            @if (!Models!.Contains(Value))
+            {
+                <option value="@Value">@(string.IsNullOrEmpty(Value) ? "Choose a model…" : $"{Value} (not listed)")</option>
+            }
+            @if (Preferred is not null && Models!.Any(IsPreferred) && Models!.Any(m => !IsPreferred(m)))
+            {
+                <optgroup label="@PreferredLabel">
+                    @foreach (var model in Models!.Where(IsPreferred))
+                    {
+                        <option value="@model">@model</option>
+                    }
+                </optgroup>
+                <optgroup label="Other models">
+                    @foreach (var model in Models!.Where(m => !IsPreferred(m)))
+                    {
+                        <option value="@model">@model</option>
+                    }
+                </optgroup>
+            }
+            else
+            {
+                @foreach (var model in Models!)
+                {
+                    <option value="@model">@model</option>
+                }
+            }
+        </select>
+    }
+    else
+    {
+        <input id="@Id" class="form-control" value="@Value" @oninput="e => ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty)" />
+    }
+
+    <button type="button" class="btn btn-outline-secondary" @onclick="OnRefresh" disabled="@Loading" title="Fetch the models this endpoint serves">
+        @if (Loading)
+        {
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        }
+        else
+        {
+            <i class="bi bi-arrow-clockwise" aria-hidden="true"></i>
+        }
+        <span class="visually-hidden">Refresh models</span>
+    </button>
+</div>
+
+@if (Error is not null)
+{
+    <div class="form-text text-danger">@Error Enter the model name by hand.</div>
+}
+else if (Models is { Count: > 0 })
+{
+    <div class="form-text">
+        @Models.Count @(Models.Count == 1 ? "model" : "models") on this endpoint.
+        <button type="button" class="btn btn-link btn-sm p-0 align-baseline" @onclick="() => manual = !manual">
+            @(manual ? "Pick from the list" : "Type a name instead")
+        </button>
+    </div>
+}
+else if (Models is { Count: 0 })
+{
+    <div class="form-text">This endpoint lists no models. Enter the model name by hand.</div>
+}
+
+@code {
+    private bool manual;
+
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    // Null until the endpoint has been asked.
+    [Parameter]
+    public IReadOnlyList<string>? Models { get; set; }
+
+    [Parameter]
+    public bool Loading { get; set; }
+
+    [Parameter]
+    public string? Error { get; set; }
+
+    [Parameter]
+    public EventCallback OnRefresh { get; set; }
+
+    // Case-insensitive fragment that sorts matching models into their own group, e.g. "embed".
+    [Parameter]
+    public string? Preferred { get; set; }
+
+    [Parameter]
+    public string PreferredLabel { get; set; } = "Suggested";
+
+    private bool ShowDropdown => !manual && Error is null && Models is { Count: > 0 };
+
+    private bool IsPreferred(string model) =>
+        Preferred is not null && model.Contains(Preferred, StringComparison.OrdinalIgnoreCase);
+}

@@ -1,0 +1,73 @@
+@using Lantrn.Services
+
+@* What each file or page of an ingest or crawl turned into, chunk by chunk. *@
+@if (Entries.Count > 0)
+{
+    <div class="form-check d-flex justify-content-end gap-2 mb-2">
+        <input id="raw" type="checkbox" class="form-check-input" @bind="showRaw" />
+        <label class="form-check-label" for="raw">Raw markdown</label>
+    </div>
+
+    @foreach (var entry in Entries)
+    {
+        <details class="disclosure mb-3" open="@(Entries.Count == 1)">
+            <summary>
+                @entry.Name
+                @if (entry.Result is { } ingested)
+                {
+                    <span class="metric-pill metric-pill-neutral ms-2">@ingested.Chunks.Count chunks</span>
+                }
+                else if (entry.Error is not null)
+                {
+                    <span class="text-danger ms-2">failed</span>
+                }
+            </summary>
+
+            @if (entry.Error is not null)
+            {
+                <div class="alert alert-danger mt-3 mb-0">@entry.Error</div>
+            }
+            else if (entry.Result is { } result)
+            {
+                <div class="mt-3">
+                    @foreach (var (chunk, index) in result.Chunks.Select((c, i) => (c, i)))
+                    {
+                        <div class="card result-card mb-2">
+                            <div class="card-body">
+                                <div class="result-meta">
+                                    <span class="result-source">@(string.IsNullOrEmpty(chunk.HeadingPath) ? "(no heading)" : chunk.HeadingPath)</span>
+                                    <span class="d-flex align-items-center gap-2">
+                                        <span class="metric-pill metric-pill-neutral">#@index</span>
+                                        <span class="metric-pill metric-pill-neutral">@chunk.Content.Length chars</span>
+                                        <span class="metric-pill">@chunk.Embedding.Length dims</span>
+                                    </span>
+                                </div>
+                                <MarkdownView Text="@chunk.Content" Raw="showRaw" />
+                            </div>
+                        </div>
+                    }
+
+                    <details class="disclosure mt-3">
+                        <summary>Full markdown</summary>
+                        <div class="mt-3"><MarkdownView Text="@result.Markdown" Raw="showRaw" /></div>
+                    </details>
+                </div>
+            }
+        </details>
+    }
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<Entry> Entries { get; set; } = [];
+
+    private bool showRaw;
+
+    // A file name or page URL; set Result or Error once it is done.
+    public sealed class Entry(string name)
+    {
+        public string Name { get; } = name;
+        public IngestResult? Result { get; set; }
+        public string? Error { get; set; }
+    }
+}

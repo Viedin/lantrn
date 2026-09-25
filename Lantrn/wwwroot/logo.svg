@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <title>Lantrn</title>
+  <rect width="64" height="64" rx="14" fill="#ffe066"/>
+  <g fill="none" stroke="#141414" stroke-width="7" stroke-linecap="round">
+    <line x1="19" y1="12" x2="19" y2="37"/>
+    <circle cx="30" cy="37" r="11"/>
+    <line x1="38" y1="45" x2="45" y2="52"/>
+  </g>
+</svg>

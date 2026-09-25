@@ -1,0 +1,21 @@
+@inherits LayoutComponentBase
+
+<div class="page">
+    <NavMenu />
+
+    <main class="content">
+        <div class="content-inner">
+            @Body
+        </div>
+    </main>
+</div>
+
+<AuthorizeView>
+    <AuthWatcher @rendermode="InteractiveServer" />
+</AuthorizeView>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>

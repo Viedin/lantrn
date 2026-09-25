@@ -1,0 +1,1090 @@
+/* ---------------------------------------------------------------------------
+   Lantrn theme layer.
+
+   Everything here works by redefining Bootstrap's own custom properties, so
+   stock Bootstrap markup (.card, .btn-primary, .alert, .table) picks up the
+   theme without extra classes. Bootstrap 5.3 tokens live on :root and are
+   re-declared under [data-bs-theme="dark"]; our tokens follow the same shape.
+
+   The base is neutral and the colour sits on top of it. Yellow is the default
+   accent for what is selected, focused or hovered, and marks matched text.
+   Yellow is too light to read as text on the light theme, so text in the
+   accent uses --bo-accent-text, a deeper amber there. Where several things of one kind sit together (tags, citations, nav
+   links, stats) they rotate through the whole palette instead of sharing one.
+   --------------------------------------------------------------------------- */
+
+:root {
+    /* Palette */
+    --bo-blue: #4c6ef5;
+    --bo-violet: #7950f2;
+    --bo-coral: #ff7a59;
+    --bo-mint: #12b886;
+    --bo-amber: #fab005;
+    --bo-pink: #e64980;
+    --bo-yellow: #ffe066;
+
+    --bo-accent: var(--bo-yellow);
+    --bo-accent-ink: #141414;
+    --bo-accent-text: #8a6500;
+    --bo-highlight: var(--bo-yellow);
+    --bo-success: var(--bo-mint);
+
+    /* Surfaces and ink */
+    --bo-bg: #f6f6f5;
+    --bo-surface: #ffffff;
+    --bo-surface-sunken: #f0f0ef;
+    --bo-ink: #141414;
+    --bo-ink-muted: #5e5e5e;
+    --bo-line: #e3e3e1;
+
+    --bo-focus-ring: rgba(250, 176, 5, 0.3);
+    --bo-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05), 0 1px 3px rgba(0, 0, 0, 0.06);
+    --bo-shadow-md: 0 2px 4px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.07);
+
+    /* --- Bootstrap overrides --- */
+    --bs-body-font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    --bs-font-monospace: "JetBrains Mono", ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --bs-body-font-size: 0.975rem;
+    --bs-body-line-height: 1.6;
+
+    --bs-body-bg: var(--bo-bg);
+    --bs-body-color: var(--bo-ink-muted);
+    --bs-emphasis-color: var(--bo-ink);
+    --bs-heading-color: var(--bo-ink);
+    --bs-secondary-color: var(--bo-ink-muted);
+    --bs-secondary-bg: var(--bo-surface-sunken);
+    --bs-tertiary-bg: var(--bo-surface-sunken);
+    --bs-border-color: var(--bo-line);
+
+    --bs-primary: var(--bo-accent);
+    --bs-primary-rgb: 255, 224, 102;
+    --bs-success: var(--bo-success);
+    --bs-success-rgb: 18, 184, 134;
+    --bs-link-color: var(--bo-ink);
+    --bs-link-color-rgb: 20, 20, 20;
+    --bs-link-hover-color: var(--bo-accent-text);
+    --bs-link-hover-color-rgb: 138, 101, 0;
+
+    --bs-border-radius: 0.625rem;
+    --bs-border-radius-sm: 0.4rem;
+    --bs-border-radius-lg: 0.875rem;
+    --bs-border-radius-xl: 1.25rem;
+}
+
+[data-bs-theme="dark"] {
+    --bo-bg: #0e0e0e;
+    --bo-surface: #181818;
+    --bo-surface-sunken: #1f1f1f;
+    --bo-ink: #f0f0f0;
+    --bo-ink-muted: #a3a3a3;
+    --bo-line: #2c2c2c;
+
+    --bo-blue: #748ffc;
+    --bo-violet: #9775fa;
+    --bo-coral: #ff8f73;
+    --bo-mint: #38d9a9;
+    --bo-amber: #ffd43b;
+    --bo-pink: #f06595;
+    --bo-accent-text: var(--bo-yellow);
+
+    --bo-focus-ring: rgba(255, 224, 102, 0.35);
+    --bo-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
+    --bo-shadow-md: 0 8px 28px rgba(0, 0, 0, 0.45);
+
+    --bs-success-rgb: 56, 217, 169;
+    --bs-link-color-rgb: 240, 240, 240;
+    --bs-link-hover-color-rgb: 255, 224, 102;
+}
+
+/* A two-colour gradient that turns slowly round the colour wheel, passing the palette's blue, violet,
+   pink, coral, amber and mint on the way. Rotating one hue angle at even lightness and chroma, rather
+   than stepping between fixed colours, keeps the speed constant and skips the grey midpoints a
+   straight fade between two colours passes through.
+
+   Run bo-flow on an element, then on that same element set
+     --flow-a: oklch(var(--flow-l) var(--flow-c) var(--flow-h));
+     --flow-b: oklch(var(--flow-l) var(--flow-c) calc(var(--flow-h) + 60));
+   and paint with linear-gradient(90deg, var(--flow-a), var(--flow-b)). */
+@property --flow-h {
+    syntax: "<number>";
+    inherits: true;
+    initial-value: 265;
+}
+
+:root {
+    --flow-l: 0.66;
+    --flow-c: 0.17;
+}
+
+[data-bs-theme="dark"] {
+    --flow-l: 0.76;
+    --flow-c: 0.14;
+}
+
+@keyframes bo-flow {
+    from { --flow-h: 265; }
+    to { --flow-h: 625; }
+}
+
+/* The palette in a fixed order, for things that take turns: set --tone and read it back */
+.tone-0 { --tone: var(--bo-blue); }
+.tone-1 { --tone: var(--bo-coral); }
+.tone-2 { --tone: var(--bo-mint); }
+.tone-3 { --tone: var(--bo-violet); }
+.tone-4 { --tone: var(--bo-amber); }
+
+/* ---------------------------------------------------------------------------
+   Base
+   --------------------------------------------------------------------------- */
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+h1, .h1 { font-size: 1.75rem; }
+h2, .h2 { font-size: 1.35rem; }
+h3, .h3 { font-size: 1.15rem; }
+
+h1, h2, h3, h4, h5, h6 {
+    font-weight: 650;
+    letter-spacing: -0.015em;
+}
+
+h1:focus {
+    outline: none;
+}
+
+a {
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 1px;
+}
+
+code:not(pre code) {
+    padding: 0.1rem 0.3rem;
+    background-color: var(--bo-surface-sunken);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius-sm);
+    color: var(--bo-ink);
+}
+
+::selection {
+    background-color: var(--bo-focus-ring);
+    color: var(--bo-ink);
+}
+
+/* Search results sit beside a preview, so they need more than the reading width other pages keep to. */
+.content-inner:has(.search-page.has-query),
+.content-inner:has(.api-reference) {
+    max-width: 90rem;
+}
+
+/* Query terms in the search preview, marked by Search.razor.js without touching the DOM. */
+::highlight(bo-search) {
+    background-color: var(--bo-highlight);
+    color: #000;
+}
+
+/* ---------------------------------------------------------------------------
+   Page furniture shared by the routed pages
+   --------------------------------------------------------------------------- */
+
+.page-heading {
+    margin-bottom: 1.75rem;
+}
+
+.page-heading .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-bottom: 0.6rem;
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--bo-ink-muted);
+}
+
+.page-heading .eyebrow::before {
+    content: "";
+    width: 1.25rem;
+    height: 3px;
+    border-radius: 2px;
+    background-color: var(--bo-accent);
+}
+
+.page-heading h1 {
+    margin-bottom: 0.4rem;
+}
+
+.page-heading .lead-text {
+    max-width: 62ch;
+    margin-bottom: 0;
+    color: var(--bo-ink-muted);
+}
+
+/* Small uppercase caption used above groups of fields and result lists */
+.section-label {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--bo-ink-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Cards
+   --------------------------------------------------------------------------- */
+
+.card {
+    --bs-card-bg: var(--bo-surface);
+    --bs-card-border-color: var(--bo-line);
+    --bs-card-border-radius: var(--bs-border-radius-lg);
+    --bs-card-inner-border-radius: calc(var(--bs-border-radius-lg) - 1px);
+    --bs-card-spacer-y: 1.25rem;
+    --bs-card-spacer-x: 1.375rem;
+    --bs-card-cap-bg: transparent;
+    box-shadow: var(--bo-shadow-sm);
+}
+
+.card-title {
+    font-size: 1.05rem;
+    margin-bottom: 0.35rem;
+}
+
+/* The primary panel on a page: a little more presence than a plain card */
+.card-panel {
+    box-shadow: var(--bo-shadow-md);
+}
+
+.card-panel .card-body {
+    padding: 1.5rem;
+}
+
+/* Headline numbers: each card gets its own colour bar across the top */
+.stat-row .card {
+    border-top: 3px solid var(--bo-blue);
+}
+
+.stat-row > :nth-child(2) .card { border-top-color: var(--bo-coral); }
+.stat-row > :nth-child(3) .card { border-top-color: var(--bo-mint); }
+.stat-row > :nth-child(4) .card { border-top-color: var(--bo-violet); }
+
+/* Cards that link somewhere — used on the home page */
+.card-link-tile {
+    height: 100%;
+    text-decoration: none;
+    color: inherit;
+    transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.card-link-tile:hover,
+.card-link-tile:focus-visible {
+    transform: translateY(-2px);
+    border-color: var(--bo-accent);
+    box-shadow: var(--bo-shadow-md);
+    color: inherit;
+}
+
+.card-link-tile .tile-icon {
+    display: grid;
+    place-items: center;
+    width: 2.5rem;
+    height: 2.5rem;
+    margin-bottom: 0.9rem;
+    font-size: 1.15rem;
+    border-radius: var(--bs-border-radius);
+    background-color: color-mix(in srgb, var(--bo-accent) 12%, transparent);
+    color: var(--bo-accent-text);
+}
+
+.card-link-tile .tile-cue {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--bo-accent-text);
+}
+
+/* A single result (search hit / ingested chunk) */
+.result-card .card-body {
+    padding: 1.1rem 1.25rem;
+}
+
+.result-meta {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.6rem;
+    border-bottom: 1px dashed var(--bo-line);
+    font-size: 0.8rem;
+    color: var(--bo-ink-muted);
+}
+
+.result-meta .result-source {
+    font-weight: 550;
+    color: var(--bo-ink);
+    overflow-wrap: anywhere;
+}
+
+/* Monospace pill for scores, dimensions, chunk indices */
+.metric-pill {
+    flex: none;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background-color: color-mix(in srgb, var(--bo-accent) 10%, transparent);
+    color: var(--bo-accent-text);
+    font-family: var(--bs-font-monospace);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+}
+
+.metric-pill.metric-pill-neutral {
+    background-color: var(--bo-surface-sunken);
+    color: var(--bo-ink-muted);
+}
+
+.metric-pill.metric-pill-danger {
+    background-color: color-mix(in srgb, var(--bs-danger) 12%, transparent);
+    color: var(--bs-danger);
+}
+
+/* ---------------------------------------------------------------------------
+   Buttons
+   --------------------------------------------------------------------------- */
+
+.btn {
+    --bs-btn-padding-y: 0.5rem;
+    --bs-btn-padding-x: 1.05rem;
+    --bs-btn-font-weight: 550;
+    --bs-btn-border-radius: var(--bs-border-radius);
+    --bs-btn-focus-box-shadow: 0 0 0 0.25rem var(--bo-focus-ring);
+    transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+}
+
+.btn:active:not(:disabled) {
+    transform: translateY(1px);
+}
+
+/* Ink at rest, yellow on hover: the button only takes colour when it is about to be used. */
+.btn-primary {
+    --bs-btn-color: var(--bo-bg);
+    --bs-btn-bg: var(--bo-ink);
+    --bs-btn-border-color: var(--bo-ink);
+    --bs-btn-hover-color: var(--bo-accent-ink);
+    --bs-btn-hover-bg: var(--bo-accent);
+    --bs-btn-hover-border-color: var(--bo-accent);
+    --bs-btn-active-color: var(--bo-accent-ink);
+    --bs-btn-active-bg: var(--bo-accent);
+    --bs-btn-active-border-color: var(--bo-accent);
+    --bs-btn-disabled-color: var(--bo-bg);
+    --bs-btn-disabled-bg: var(--bo-ink);
+    --bs-btn-disabled-border-color: var(--bo-ink);
+    --bs-btn-disabled-opacity: 0.4;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+.btn-outline-primary {
+    --bs-btn-color: var(--bo-ink);
+    --bs-btn-border-color: color-mix(in srgb, var(--bo-ink) 25%, transparent);
+    --bs-btn-hover-color: var(--bo-accent-ink);
+    --bs-btn-hover-bg: var(--bo-accent);
+    --bs-btn-hover-border-color: var(--bo-accent);
+    --bs-btn-active-color: var(--bo-accent-ink);
+    --bs-btn-active-bg: var(--bo-accent);
+    --bs-btn-active-border-color: var(--bo-accent);
+    --bs-btn-disabled-color: var(--bo-ink-muted);
+    --bs-btn-disabled-border-color: var(--bo-line);
+}
+
+.btn-outline-secondary {
+    --bs-btn-color: var(--bo-ink-muted);
+    --bs-btn-border-color: var(--bo-line);
+    --bs-btn-hover-color: var(--bo-ink);
+    --bs-btn-hover-bg: var(--bo-surface-sunken);
+    --bs-btn-hover-border-color: var(--bo-line);
+    --bs-btn-active-color: var(--bo-ink);
+    --bs-btn-active-bg: var(--bo-surface-sunken);
+    --bs-btn-active-border-color: var(--bo-line);
+}
+
+.btn-link {
+    --bs-btn-color: var(--bo-ink);
+    --bs-btn-hover-color: var(--bo-accent-text);
+    --bs-btn-font-weight: 550;
+    text-decoration: none;
+}
+
+.btn-link:hover {
+    text-decoration: underline;
+}
+
+.btn:focus-visible,
+.btn:active:focus-visible,
+.form-control:focus,
+.form-select:focus,
+.form-check-input:focus {
+    box-shadow: 0 0 0 0.25rem var(--bo-focus-ring);
+}
+
+/* The template's white-halo focus ring reads as a glitch on a tinted page */
+.btn:focus,
+.btn:active:focus,
+.btn-link.nav-link:focus {
+    box-shadow: 0 0 0 0.25rem var(--bo-focus-ring);
+}
+
+/* ---------------------------------------------------------------------------
+   Forms
+   --------------------------------------------------------------------------- */
+
+.form-label {
+    margin-bottom: 0.4rem;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    color: var(--bo-ink);
+}
+
+.form-control,
+.form-select {
+    --bs-border-radius: 0.55rem;
+    padding: 0.5rem 0.75rem;
+    background-color: var(--bo-surface);
+    border-color: var(--bo-line);
+    color: var(--bo-ink);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.form-control:hover:not(:focus),
+.form-select:hover:not(:focus) {
+    border-color: color-mix(in srgb, var(--bo-accent) 30%, var(--bo-line));
+}
+
+.form-control:focus,
+.form-select:focus {
+    background-color: var(--bo-surface);
+    border-color: var(--bo-accent);
+    color: var(--bo-ink);
+}
+
+.form-control::placeholder {
+    color: color-mix(in srgb, var(--bo-ink-muted) 65%, transparent);
+}
+
+/* Blazor's InputFile renders as .form-control; tidy the native button */
+.form-control[type="file"]::file-selector-button {
+    padding: 0.5rem 0.75rem;
+    margin-inline-end: 0.75rem;
+    background-color: var(--bo-surface-sunken);
+    border: 0;
+    border-inline-end: 1px solid var(--bo-line);
+    color: var(--bo-ink);
+    font-weight: 550;
+    cursor: pointer;
+}
+
+.form-control[type="file"]:hover::file-selector-button {
+    background-color: color-mix(in srgb, var(--bo-accent) 10%, var(--bo-surface-sunken));
+}
+
+.form-check-input {
+    border-color: color-mix(in srgb, var(--bo-ink-muted) 45%, transparent);
+}
+
+.form-check-input:checked {
+    background-color: var(--bo-accent);
+    border-color: var(--bo-accent);
+}
+
+/* Bootstrap's white tick and switch knob vanish on yellow, so draw them in ink */
+.form-check-input:checked[type=checkbox] {
+    --bs-form-check-bg-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23141414' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e");
+}
+
+.form-switch .form-check-input:checked {
+    --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23141414'/%3e%3c/svg%3e");
+}
+
+.form-check-label {
+    color: var(--bo-ink-muted);
+}
+
+.darker-border-checkbox.form-check-input {
+    border-color: color-mix(in srgb, var(--bo-ink-muted) 60%, transparent);
+}
+
+.form-floating > .form-control-plaintext::placeholder,
+.form-floating > .form-control::placeholder {
+    color: var(--bs-secondary-color);
+    text-align: end;
+}
+
+.form-floating > .form-control-plaintext:focus::placeholder,
+.form-floating > .form-control:focus::placeholder {
+    text-align: start;
+}
+
+.valid.modified:not([type=checkbox]) {
+    outline: 1px solid #26b050;
+}
+
+.invalid {
+    outline: 1px solid #e50000;
+}
+
+.validation-message {
+    color: #e50000;
+}
+
+/* ---------------------------------------------------------------------------
+   Alerts — flat, with a leading accent rule instead of a tinted box
+   --------------------------------------------------------------------------- */
+
+.alert {
+    --bs-alert-border-radius: var(--bs-border-radius);
+    border-left-width: 3px;
+    padding: 0.85rem 1.1rem;
+    font-size: 0.925rem;
+}
+
+.alert-danger {
+    --bs-alert-color: #b42318;
+    --bs-alert-bg: #fef3f2;
+    --bs-alert-border-color: #f9c9c4;
+    border-left-color: #d92d20;
+}
+
+.alert-warning {
+    --bs-alert-color: #93500a;
+    --bs-alert-bg: #fffaeb;
+    --bs-alert-border-color: #fde5aa;
+    border-left-color: #f79009;
+}
+
+.alert-info {
+    --bs-alert-color: #2f3ba6;
+    --bs-alert-bg: #f2f3ff;
+    --bs-alert-border-color: #cdd0fb;
+    border-left-color: var(--bo-accent);
+}
+
+.alert-success {
+    --bs-alert-color: #027a48;
+    --bs-alert-bg: #f0fdf7;
+    --bs-alert-border-color: #b4e8cd;
+    border-left-color: var(--bo-success);
+}
+
+[data-bs-theme="dark"] .alert-danger {
+    --bs-alert-color: #ffb4ab;
+    --bs-alert-bg: rgba(217, 45, 32, 0.14);
+    --bs-alert-border-color: rgba(217, 45, 32, 0.35);
+}
+
+[data-bs-theme="dark"] .alert-warning {
+    --bs-alert-color: #fcd34d;
+    --bs-alert-bg: rgba(247, 144, 9, 0.14);
+    --bs-alert-border-color: rgba(247, 144, 9, 0.35);
+}
+
+[data-bs-theme="dark"] .alert-info {
+    --bs-alert-color: #c7c4ff;
+    --bs-alert-bg: rgba(143, 137, 255, 0.14);
+    --bs-alert-border-color: rgba(143, 137, 255, 0.35);
+}
+
+[data-bs-theme="dark"] .alert-success {
+    --bs-alert-color: #6ee7b7;
+    --bs-alert-bg: rgba(18, 183, 106, 0.14);
+    --bs-alert-border-color: rgba(18, 183, 106, 0.35);
+}
+
+/* ---------------------------------------------------------------------------
+   Tables
+   --------------------------------------------------------------------------- */
+
+.table {
+    --bs-table-bg: var(--bo-surface);
+    --bs-table-color: var(--bo-ink-muted);
+    --bs-table-border-color: var(--bo-line);
+    --bs-table-hover-bg: var(--bo-surface-sunken);
+    --bs-table-hover-color: var(--bo-ink);
+    margin-bottom: 0;
+    vertical-align: middle;
+}
+
+.table > thead th {
+    padding-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    background-color: var(--bo-surface-sunken);
+    color: var(--bo-ink-muted);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    border-bottom-color: var(--bo-line);
+}
+
+.table > tbody td {
+    padding-top: 0.7rem;
+    padding-bottom: 0.7rem;
+}
+
+.table > tbody tr:last-child > * {
+    border-bottom-width: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Modals — rendered by Blazor, so they are shown with .d-block rather than JS
+   --------------------------------------------------------------------------- */
+
+.modal {
+    --bs-modal-width: 26rem;
+    --bs-modal-padding: 1.25rem;
+    --bs-modal-header-padding: 1.25rem 1.25rem 0;
+    --bs-modal-header-border-width: 0;
+    --bs-modal-footer-border-width: 0;
+    --bs-modal-bg: var(--bo-surface);
+    --bs-modal-border-color: var(--bo-line);
+    --bs-modal-border-radius: var(--bs-border-radius-lg);
+    --bs-modal-inner-border-radius: calc(var(--bs-border-radius-lg) - 1px);
+}
+
+.modal-content {
+    box-shadow: var(--bo-shadow-md);
+}
+
+.modal-backdrop {
+    --bs-backdrop-bg: #000;
+    --bs-backdrop-opacity: 0.45;
+}
+
+.modal.d-block .modal-dialog {
+    animation: bo-modal-in 0.2s cubic-bezier(.05, .89, .25, 1.02);
+}
+
+@keyframes bo-modal-in {
+    from {
+        transform: translateY(12px);
+        opacity: 0;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Misc components
+   --------------------------------------------------------------------------- */
+
+.list-group {
+    --bs-list-group-bg: var(--bo-surface);
+    --bs-list-group-color: var(--bo-ink-muted);
+    --bs-list-group-border-color: var(--bo-line);
+    --bs-list-group-item-padding-x: 1.1rem;
+    --bs-list-group-item-padding-y: 0.85rem;
+}
+
+.spinner-border-sm {
+    --bs-spinner-width: 0.9rem;
+    --bs-spinner-height: 0.9rem;
+    --bs-spinner-border-width: 0.15em;
+}
+
+/* Bootstrap compiles the bar colour to a literal blue rather than --bs-primary */
+.progress {
+    --bs-progress-bg: var(--bo-surface-sunken);
+    --bs-progress-bar-bg: var(--bo-accent);
+}
+
+/* Share bars in a list (the dashboard's collections) rotate through the signal colours */
+.list-group-item:nth-child(5n+2) .progress-bar { --bs-progress-bar-bg: var(--bo-coral); }
+.list-group-item:nth-child(5n+3) .progress-bar { --bs-progress-bar-bg: var(--bo-mint); }
+.list-group-item:nth-child(5n+4) .progress-bar { --bs-progress-bar-bg: var(--bo-violet); }
+.list-group-item:nth-child(5n+5) .progress-bar { --bs-progress-bar-bg: var(--bo-amber); }
+
+details.disclosure {
+    padding: 0.9rem 1.25rem;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: var(--bo-shadow-sm);
+}
+
+details.disclosure > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--bo-ink);
+    list-style: none;
+}
+
+details.disclosure > summary::marker,
+details.disclosure > summary::-webkit-details-marker {
+    display: none;
+}
+
+details.disclosure > summary::before {
+    content: "▸";
+    display: inline-block;
+    margin-right: 0.5rem;
+    color: var(--bo-accent-text);
+    transition: transform 0.15s ease;
+}
+
+details.disclosure[open] > summary::before {
+    transform: rotate(90deg);
+}
+
+details.disclosure[open] > summary {
+    margin-bottom: 0.9rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid var(--bo-line);
+}
+
+.text-secondary {
+    color: var(--bo-ink-muted) !important;
+}
+
+/* Toggleable tag filters (search, collection browser) */
+.tag-chips {
+    display: inline-flex;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+}
+
+.tag-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.15rem 0.6rem;
+    cursor: pointer;
+    background-color: var(--bo-surface-sunken);
+    border: 1px solid var(--bo-line);
+    border-radius: 999px;
+    color: var(--bo-ink-muted);
+    font-family: var(--bs-font-monospace);
+    font-size: 0.78rem;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+/* Each chip takes the next palette colour: a dot at rest, a tint on hover, filled when on */
+.tag-chip:nth-child(5n+1) { --tone: var(--bo-blue); }
+.tag-chip:nth-child(5n+2) { --tone: var(--bo-coral); }
+.tag-chip:nth-child(5n+3) { --tone: var(--bo-mint); }
+.tag-chip:nth-child(5n+4) { --tone: var(--bo-violet); }
+.tag-chip:nth-child(5n+5) { --tone: var(--bo-amber); }
+
+.tag-chip::before {
+    content: "";
+    width: 0.45rem;
+    height: 0.45rem;
+    border-radius: 50%;
+    background-color: var(--tone, var(--bo-accent));
+}
+
+.tag-chip:hover {
+    background-color: color-mix(in srgb, var(--tone, var(--bo-accent)) 16%, var(--bo-surface));
+    border-color: var(--tone, var(--bo-accent));
+    color: var(--bo-ink);
+}
+
+.tag-chip.active {
+    background-color: var(--tone, var(--bo-accent));
+    border-color: var(--tone, var(--bo-accent));
+    color: #141414;
+    font-weight: 600;
+}
+
+.tag-chip.active::before {
+    background-color: #141414;
+}
+
+.tag-chip:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.2rem var(--bo-focus-ring);
+}
+
+.tag-chip .tag-count {
+    opacity: 0.65;
+    font-variant-numeric: tabular-nums;
+}
+
+.empty-state {
+    padding: 3rem 2rem;
+    text-align: center;
+    background-color: color-mix(in srgb, var(--bo-surface) 55%, transparent);
+    border: 1px dashed var(--bo-line);
+    border-radius: var(--bs-border-radius-xl);
+}
+
+.empty-icon {
+    display: grid;
+    place-items: center;
+    width: 2.75rem;
+    height: 2.75rem;
+    margin: 0 auto 1rem;
+    border-radius: 50%;
+    background-color: var(--bo-highlight);
+    color: #000;
+    font-size: 1.35rem;
+}
+
+.empty-state h2 {
+    font-size: 1.1rem;
+    margin-bottom: 0.4rem;
+}
+
+.empty-state p {
+    max-width: 44ch;
+    margin: 0 auto;
+    font-size: 0.9rem;
+    color: var(--bo-ink-muted);
+}
+
+.btn-sm {
+    --bs-btn-padding-y: 0.25rem;
+    --bs-btn-padding-x: 0.6rem;
+    --bs-btn-font-size: 0.8rem;
+}
+
+.btn-outline-danger {
+    --bs-btn-border-color: color-mix(in srgb, var(--bs-danger) 40%, transparent);
+}
+
+kbd {
+    padding: 0.1rem 0.35rem;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-bottom-width: 2px;
+    border-radius: 0.3rem;
+    color: var(--bo-ink-muted);
+    font-family: var(--bs-font-monospace);
+    font-size: 0.72rem;
+}
+
+.skeleton-line {
+    display: block;
+    height: 0.7rem;
+    margin-bottom: 0.55rem;
+    border-radius: 999px;
+    background-image: linear-gradient(90deg,
+        var(--bo-surface-sunken) 0%,
+        color-mix(in srgb, var(--bo-ink-muted) 18%, var(--bo-surface-sunken)) 50%,
+        var(--bo-surface-sunken) 100%);
+    background-size: 200% 100%;
+    animation: bo-shimmer 1.4s ease-in-out infinite;
+}
+
+@keyframes bo-shimmer {
+    from { background-position: 150% 0; }
+    to { background-position: -50% 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .skeleton-line {
+        animation: none;
+    }
+}
+
+/* A numbered source marker, the same in an answer's text, its source chips and the result rows, so they read as linked. */
+.cite {
+    display: inline-grid;
+    place-items: center;
+    flex: none;
+    min-width: 1.15rem;
+    height: 1.15rem;
+    padding: 0 0.25rem;
+    background-color: var(--tone, var(--bo-accent));
+    border-radius: 999px;
+    color: #141414;
+    font-family: var(--bs-font-monospace);
+    font-size: 0.68rem;
+    font-weight: 600;
+    line-height: 1;
+    vertical-align: text-top;
+}
+
+/* ---------------------------------------------------------------------------
+   Rendered markdown from extracted documents
+   --------------------------------------------------------------------------- */
+
+.markdown-body {
+    font-size: 0.925rem;
+}
+
+.markdown-body > :last-child {
+    margin-bottom: 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+    font-size: 1rem;
+    font-weight: 650;
+    margin-top: 1.25rem;
+    color: var(--bo-ink);
+}
+
+.markdown-body > h1:first-child,
+.markdown-body > h2:first-child,
+.markdown-body > h3:first-child,
+.markdown-body > h4:first-child {
+    margin-top: 0;
+}
+
+.markdown-body table {
+    width: 100%;
+    margin-bottom: 1rem;
+    border-collapse: collapse;
+    font-size: 0.875rem;
+}
+
+.markdown-body th,
+.markdown-body td {
+    border: 1px solid var(--bo-line);
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    vertical-align: top;
+}
+
+.markdown-body th {
+    background-color: var(--bo-surface-sunken);
+    color: var(--bo-ink);
+    font-weight: 600;
+}
+
+.markdown-body pre {
+    padding: 0.85rem 1rem;
+    background-color: var(--bo-surface-sunken);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius);
+    overflow-x: auto;
+    font-size: 0.85rem;
+}
+
+.markdown-body code {
+    font-size: 0.875em;
+}
+
+.markdown-body blockquote {
+    margin-left: 0;
+    border-left: 3px solid var(--bo-line);
+    padding-left: 0.85rem;
+    color: var(--bo-ink-muted);
+}
+
+.markdown-body img {
+    max-width: 100%;
+    border-radius: var(--bs-border-radius-sm);
+}
+
+/* ---------------------------------------------------------------------------
+   Blazor error boundary
+   --------------------------------------------------------------------------- */
+
+.blazor-error-boundary {
+    background: url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNTYiIGhlaWdodD0iNDkiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIG92ZXJmbG93PSJoaWRkZW4iPjxkZWZzPjxjbGlwUGF0aCBpZD0iY2xpcDAiPjxyZWN0IHg9IjIzNSIgeT0iNTEiIHdpZHRoPSI1NiIgaGVpZ2h0PSI0OSIvPjwvY2xpcFBhdGg+PC9kZWZzPjxnIGNsaXAtcGF0aD0idXJsKCNjbGlwMCkiIHRyYW5zZm9ybT0idHJhbnNsYXRlKC0yMzUgLTUxKSI+PHBhdGggZD0iTTI2My41MDYgNTFDMjY0LjcxNyA1MSAyNjUuODEzIDUxLjQ4MzcgMjY2LjYwNiA1Mi4yNjU4TDI2Ny4wNTIgNTIuNzk4NyAyNjcuNTM5IDUzLjYyODMgMjkwLjE4NSA5Mi4xODMxIDI5MC41NDUgOTIuNzk1IDI5MC42NTYgOTIuOTk2QzI5MC44NzcgOTMuNTEzIDI5MSA5NC4wODE1IDI5MSA5NC42NzgyIDI5MSA5Ny4wNjUxIDI4OS4wMzggOTkgMjg2LjYxNyA5OUwyNDAuMzgzIDk5QzIzNy45NjMgOTkgMjM2IDk3LjA2NTEgMjM2IDk0LjY3ODIgMjM2IDk0LjM3OTkgMjM2LjAzMSA5NC4wODg2IDIzNi4wODkgOTMuODA3MkwyMzYuMzM4IDkzLjAxNjIgMjM2Ljg1OCA5Mi4xMzE0IDI1OS40NzMgNTMuNjI5NCAyNTkuOTYxIDUyLjc5ODUgMjYwLjQwNyA1Mi4yNjU4QzI2MS4yIDUxLjQ4MzcgMjYyLjI5NiA1MSAyNjMuNTA2IDUxWk0yNjMuNTg2IDY2LjAxODNDMjYwLjczNyA2Ni4wMTgzIDI1OS4zMTMgNjcuMTI0NSAyNTkuMzEzIDY5LjMzNyAyNTkuMzEzIDY5LjYxMDIgMjU5LjMzMiA2OS44NjA4IDI1OS4zNzEgNzAuMDg4N0wyNjEuNzk1IDg0LjAxNjEgMjY1LjM4IDg0LjAxNjEgMjY3LjgyMSA2OS43NDc1QzI2Ny44NiA2OS43MzA5IDI2Ny44NzkgNjkuNTg3NyAyNjcuODc5IDY5LjMxNzkgMjY3Ljg3OSA2Ny4xMTgyIDI2Ni40NDggNjYuMDE4MyAyNjMuNTg2IDY2LjAxODNaTTI2My41NzYgODYuMDU0N0MyNjEuMDQ5IDg2LjA1NDcgMjU5Ljc4NiA4Ny4zMDA1IDI1OS43ODYgODkuNzkyMSAyNTkuNzg2IDkyLjI4MzcgMjYxLjA0OSA5My41Mjk1IDI2My41NzYgOTMuNTI5NSAyNjYuMTE2IDkzLjUyOTUgMjY3LjM4NyA5Mi4yODM3IDI2Ny4zODcgODkuNzkyMSAyNjcuMzg3IDg3LjMwMDUgMjY2LjExNiA4Ni4wNTQ3IDI2My41NzYgODYuMDU0N1oiIGZpbGw9IiNGRkU1MDAiIGZpbGwtcnVsZT0iZXZlbm9kZCIvPjwvZz48L3N2Zz4=) no-repeat 1rem/1.8rem, #b32121;
+    padding: 1rem 1rem 1rem 3.7rem;
+    border-radius: var(--bs-border-radius);
+    color: white;
+}
+
+    .blazor-error-boundary::after {
+        content: "An error has occurred."
+    }
+
+/* ---------------------------------------------------------------------------
+   Account pages (AuthLayout)
+   --------------------------------------------------------------------------- */
+
+.auth-page {
+    display: grid;
+    place-items: center;
+    min-height: 100vh;
+    padding: 2rem 1rem;
+    background-image: radial-gradient(ellipse at top, var(--bo-surface-sunken) 0%, var(--bo-bg) 60%);
+}
+
+.auth-card {
+    width: 100%;
+    max-width: 26rem;
+    padding: 2.25rem 2rem;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius-xl);
+    box-shadow: var(--bo-shadow-md);
+}
+
+.auth-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 1.75rem;
+    color: var(--bo-ink);
+    font-size: 1.15rem;
+    font-weight: 650;
+    text-decoration: none;
+}
+
+.auth-brand-mark {
+    display: grid;
+    place-items: center;
+    width: 2.1rem;
+    height: 2.1rem;
+    border-radius: 0.6rem;
+    background-color: var(--bo-highlight);
+    color: #000;
+    font-size: 1.05rem;
+    font-weight: 800;
+}
+
+.auth-card h1 {
+    margin-bottom: 0.35rem;
+}
+
+.auth-lead {
+    margin-bottom: 1.5rem;
+}
+
+.auth-switch {
+    margin: 1.5rem 0 0;
+    font-size: 0.9rem;
+    text-align: center;
+}
+
+@media (max-width: 640.98px) {
+    .auth-card {
+        padding: 1.75rem 1.25rem;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+   Respect reduced-motion preferences
+   --------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+    html {
+        scroll-behavior: auto;
+    }
+
+    .btn,
+    .card-link-tile,
+    .form-control,
+    .form-select,
+    details.disclosure > summary::before {
+        transition: none;
+    }
+
+    .modal.d-block .modal-dialog {
+        animation: none;
+    }
+
+    .btn:active:not(:disabled),
+    .card-link-tile:hover {
+        transform: none;
+    }
+}

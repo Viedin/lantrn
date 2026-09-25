@@ -1,0 +1,4 @@
+@* Searching and reading: anyone signed in, or everyone while public search is on. Editing inside stays admin-only. *@
+@attribute [Authorize(Policy = SearchAccess.Policy)]
+@using Lantrn.Infra
+@using Lantrn.Services

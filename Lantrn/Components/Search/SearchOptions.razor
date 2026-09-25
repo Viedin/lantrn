@@ -1,0 +1,100 @@
+<div class="search-options">
+    <div class="option-row">
+        <label class="option">
+            <span class="option-label">Collection</span>
+            <select class="option-input" @bind:get="Collection" @bind:set="value => CollectionChanged.InvokeAsync(value)" aria-label="Collection">
+                @if (Collections.All(c => c.Name != Collection))
+                {
+                    <option value="@Collection">@Collection</option>
+                }
+                @foreach (var option in Collections)
+                {
+                    <option value="@option.Name">@option.Name</option>
+                }
+            </select>
+        </label>
+
+        <div class="option" role="group" aria-label="Filter by type">
+            <span class="option-label">Type</span>
+            <div class="segmented">
+                @foreach (var (value, label) in KindPresets)
+                {
+                    <button type="button" class="@(Kind == value ? "active" : null)"
+                            aria-pressed="@(Kind == value ? "true" : "false")" @onclick="() => KindChanged.InvokeAsync(value)">
+                        @label
+                    </button>
+                }
+            </div>
+        </div>
+
+        <div class="option" role="group" aria-label="Number of results">
+            <span class="option-label">Results</span>
+            <div class="segmented">
+                @foreach (var preset in ResultPresets)
+                {
+                    <button type="button" class="@(Limit == preset ? "active" : null)"
+                            aria-pressed="@(Limit == preset ? "true" : "false")" @onclick="() => LimitChanged.InvokeAsync(preset)">
+                        @preset
+                    </button>
+                }
+            </div>
+        </div>
+    </div>
+
+    @* Tags get a row of their own: their count varies, and wrapping them among fixed controls made the row ragged. *@
+    @if (AvailableTags.Count > 0)
+    {
+        <div class="option option-tags" role="group" aria-label="Filter by tag">
+            <span class="option-label">Tags</span>
+            <div class="tag-chips">
+                @foreach (var tag in AvailableTags)
+                {
+                    var active = SelectedTags.Contains(tag);
+                    <button type="button" class="tag-chip @(active ? "active" : null)"
+                            aria-pressed="@(active ? "true" : "false")" @onclick="() => OnToggleTag.InvokeAsync(tag)">
+                        @tag
+                    </button>
+                }
+            </div>
+        </div>
+    }
+</div>
+
+@code {
+    public static readonly int[] ResultPresets = [5, 10, 20, 50];
+
+    public static readonly (DocumentKind? Value, string Label)[] KindPresets =
+        [(null, "All"), (DocumentKind.Text, "Documents"), (DocumentKind.Ocr, "Images (OCR)")];
+
+    public static string KindLabel(DocumentKind kind) => KindPresets.First(p => p.Value == kind).Label;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<CollectionSummary> Collections { get; set; } = [];
+
+    [Parameter]
+    public string Collection { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> CollectionChanged { get; set; }
+
+    [Parameter]
+    public DocumentKind? Kind { get; set; }
+
+    [Parameter]
+    public EventCallback<DocumentKind?> KindChanged { get; set; }
+
+    [Parameter]
+    public int Limit { get; set; }
+
+    [Parameter]
+    public EventCallback<int> LimitChanged { get; set; }
+
+    [Parameter]
+    public IReadOnlyList<string> AvailableTags { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlySet<string> SelectedTags { get; set; } = new HashSet<string>();
+
+    [Parameter]
+    public EventCallback<string> OnToggleTag { get; set; }
+}

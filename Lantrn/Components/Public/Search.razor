@@ -1,0 +1,389 @@
+@page "/"
+@rendermode InteractiveServer
+@implements IAsyncDisposable
+
+@using System.Diagnostics
+@using Lantrn.Components.Search
+@using Lantrn.Infra
+@using Lantrn.Services
+
+@inject EmbeddingService Embeddings
+@inject SearchAssistant Assistant
+@inject QdrantStore Qdrant
+@inject DocumentStore Documents
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<Search> Log
+
+<PageTitle>@(string.IsNullOrWhiteSpace(Q) ? "Search" : $"{Q} · Search")</PageTitle>
+
+<div class="search-page @(IsLanding ? "is-landing" : "has-query")">
+    @if (IsLanding)
+    {
+        <div class="search-hero">
+            <img class="hero-logo" src="@Assets["logo.svg"]" alt="" />
+            <h1>What are you <span class="hero-mark">looking for</span>?</h1>
+            <p class="lead-text">
+                Describe it in your own words. Passages are matched on meaning, and exact names or numbers count too.
+            </p>
+        </div>
+    }
+
+    <div class="search-top">
+        <SearchBar @ref="searchBar" @bind-Value="query" Busy="busy" OnSubmit="SubmitSearchAsync" OnClear="ClearQuery" />
+    </div>
+
+    <SearchOptions Collections="collections"
+                   @bind-Collection="collection" @bind-Collection:after="LoadTagsAsync"
+                   @bind-Kind="kind" @bind-Limit="limit"
+                   AvailableTags="availableTags" SelectedTags="selectedTags" OnToggleTag="ToggleTag" />
+
+    @if (IsLanding)
+    {
+        <p class="search-shortcuts">
+            <span><kbd>↑</kbd><kbd>↓</kbd> move through results</span>
+            <span><kbd>Enter</kbd> open document</span>
+            <span><kbd>Esc</kbd> back to search</span>
+        </p>
+    }
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (busy && hits is null)
+    {
+        <div class="results-layout">
+            <ResultList />
+            <PreviewPane />
+        </div>
+    }
+    else if (hits is not null)
+    {
+        @if (hits.Count == 0)
+        {
+            <div class="empty-state">
+                <span class="empty-icon" aria-hidden="true"><i class="bi bi-search"></i></span>
+                <h2>No matches in '@searchedCollection'</h2>
+                <p>
+                    Nothing in this collection came close enough. Try different wording or clear the tag filter.
+                    <AuthorizeView Roles="@Roles.Admin">
+                        You can also <a href="collections/@Uri.EscapeDataString(searchedCollection)">check what the collection holds</a>.
+                    </AuthorizeView>
+                </p>
+            </div>
+        }
+        else
+        {
+            @* Keyed by the results, so each search gets a fresh answer and preview cache. *@
+            @if (citedCount > 0)
+            {
+                <AnswerPanel @key="hits" Query="@searchedQuery" Hits="hits" Sources="citedCount" Collection="@searchedCollection"
+                             Selected="selected" OnSelect="(int index) => Select(index)" />
+            }
+
+            <div class="results-layout">
+                <ResultList Hits="hits" Snippets="snippets" Selected="selected" OnSelect="(int index) => Select(index)"
+                            Collection="@searchedCollection" Tags="searchedTags" Kind="searchedKind" Hybrid="hybrid"
+                            ElapsedMs="elapsedMs" CitedCount="citedCount" />
+
+                @if (SelectedHit is { } current)
+                {
+                    <PreviewPane @key="hits" Hit="current" Index="selected" Collection="@searchedCollection"
+                                 Open="previewOpen" Terms="terms" OnClose="() => previewOpen = false" />
+                }
+            </div>
+        }
+    }
+</div>
+
+@code {
+    private const string DefaultCollection = DocumentStore.DefaultCollection;
+    private const int DefaultLimit = 10;
+
+    // The search lives in the URL, so going back from a document (or reloading) restores it.
+    [SupplyParameterFromQuery(Name = "q")]
+    public string? Q { get; set; }
+
+    [SupplyParameterFromQuery(Name = "collection")]
+    public string? CollectionParameter { get; set; }
+
+    [SupplyParameterFromQuery(Name = "tag")]
+    public string[]? TagParameter { get; set; }
+
+    [SupplyParameterFromQuery(Name = "limit")]
+    public int? LimitParameter { get; set; }
+
+    [SupplyParameterFromQuery(Name = "kind")]
+    public string? KindParameter { get; set; }
+
+    private string query = string.Empty;
+    private string collection = DefaultCollection;
+    private int limit = DefaultLimit;
+    private DocumentKind? kind;
+
+    private IReadOnlyList<CollectionSummary> collections = [];
+    private IReadOnlyList<string> availableTags = [];
+    private string? tagsCollection;
+    private HashSet<string> selectedTags = [];
+
+    // What the shown results were searched with; the controls above may have moved on since.
+    private string searchedQuery = string.Empty;
+    private string searchedCollection = DefaultCollection;
+    private IReadOnlyList<string> searchedTags = [];
+    private DocumentKind? searchedKind;
+
+    private IReadOnlyList<SearchHit>? hits;
+    private IReadOnlyList<MarkupString> snippets = [];
+    private string[] terms = [];
+    private bool hybrid;
+    private string? error;
+    private bool busy;
+    private long elapsedMs;
+    private string? lastSearchUri;
+
+    // How many of the top hits the assistant answers from; 0 when it is off.
+    private int citedCount;
+
+    // The selected hit drives the preview; on narrow screens the preview is a sheet that opens only when asked.
+    private int selected = -1;
+    private bool previewOpen;
+
+    private SearchBar? searchBar;
+    private IJSObjectReference? module;
+    private DotNetObjectReference<Search>? selfReference;
+    private bool revealPending;
+
+    private bool IsLanding => string.IsNullOrWhiteSpace(Q) && hits is null && !busy && error is null;
+
+    private SearchHit? SelectedHit => hits is not null && selected >= 0 && selected < hits.Count ? hits[selected] : null;
+
+    protected override async Task OnInitializedAsync()
+    {
+        collections = await Documents.ListCollectionsAsync();
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        query = Q ?? string.Empty;
+        collection = string.IsNullOrWhiteSpace(CollectionParameter) ? DefaultCollection : CollectionParameter;
+        limit = LimitParameter is { } requested && SearchOptions.ResultPresets.Contains(requested) ? requested : DefaultLimit;
+        selectedTags = (TagParameter ?? []).ToHashSet();
+        kind = Enum.TryParse<DocumentKind>(KindParameter, ignoreCase: true, out var requestedKind) && Enum.IsDefined(requestedKind)
+            ? requestedKind
+            : null;
+
+        // Show the skeleton while tags load, rather than flashing the empty state before the search starts.
+        busy = !string.IsNullOrWhiteSpace(query) && Navigation.Uri != lastSearchUri;
+
+        if (collection != tagsCollection)
+        {
+            await LoadTagsAsync();
+        }
+
+        if (string.IsNullOrWhiteSpace(query))
+        {
+            hits = null;
+            error = null;
+            lastSearchUri = null;
+            return;
+        }
+
+        // Prerendering would embed the query a second time; show the skeleton until the circuit is up.
+        if (!RendererInfo.IsInteractive)
+        {
+            return;
+        }
+
+        if (busy)
+        {
+            await RunSearchAsync();
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        try
+        {
+            if (firstRender)
+            {
+                selfReference = DotNetObjectReference.Create(this);
+                module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Public/Search.razor.js");
+                await module.InvokeVoidAsync("init", selfReference, searchBar!.Input);
+            }
+
+            if (revealPending && module is not null)
+            {
+                revealPending = false;
+                await module.InvokeVoidAsync("revealSelected");
+            }
+        }
+        catch (JSDisconnectedException)
+        {
+            // Navigated away before the render finished.
+        }
+    }
+
+    private async Task LoadTagsAsync()
+    {
+        tagsCollection = collection;
+
+        try
+        {
+            availableTags = (await Documents.ListTagsAsync(collection)).Select(t => t.Name).ToList();
+            selectedTags.IntersectWith(availableTags);
+        }
+        catch (Exception ex)
+        {
+            // Tags are optional; search still works without the filter.
+            Log.LogWarning(ex, "Could not load tags for '{Collection}'", collection);
+            availableTags = [];
+        }
+    }
+
+    private string SearchUri(string? q) => Navigation.GetUriWithQueryParameters(
+        Navigation.BaseUri,
+        new Dictionary<string, object?>
+        {
+            ["q"] = string.IsNullOrWhiteSpace(q) ? null : q.Trim(),
+            ["collection"] = collection == DefaultCollection ? null : collection,
+            ["tag"] = selectedTags.Count > 0 ? selectedTags.Order().ToArray() : null,
+            ["kind"] = kind?.ToString().ToLowerInvariant(),
+            ["limit"] = limit == DefaultLimit ? null : limit,
+        });
+
+    private void ToggleTag(string tag)
+    {
+        if (!selectedTags.Remove(tag))
+        {
+            selectedTags.Add(tag);
+        }
+    }
+
+    private void ClearQuery()
+    {
+        query = string.Empty;
+        error = null;
+        Navigation.NavigateTo(SearchUri(null));
+    }
+
+    // Each search becomes a history entry; OnParametersSetAsync picks it up from the new URL.
+    private async Task SubmitSearchAsync()
+    {
+        if (busy || string.IsNullOrWhiteSpace(query))
+        {
+            return;
+        }
+
+        var uri = SearchUri(query);
+        if (uri == Navigation.Uri)
+        {
+            // Same URL, so no navigation would happen; searching again is still what was asked for.
+            await RunSearchAsync();
+            return;
+        }
+
+        Navigation.NavigateTo(uri);
+    }
+
+    private async Task RunSearchAsync()
+    {
+        lastSearchUri = Navigation.Uri;
+        busy = true;
+        error = null;
+        hits = null;
+        selected = -1;
+        previewOpen = false;
+
+        var timer = Stopwatch.StartNew();
+
+        try
+        {
+            var tags = selectedTags.Order().ToList();
+            var vector = await Embeddings.EmbedQueryAsync(query);
+            var results = await Qdrant.SearchAsync(collection, query, vector, tags, kind, (ulong)limit);
+
+            var queryTerms = KeywordEncoder.QueryTerms(query);
+            terms = queryTerms.ToArray();
+            snippets = results.Hits
+                .Select(hit => SnippetBuilder.Build(MarkdownRenderer.ToPlainText(hit.Content), queryTerms))
+                .ToList();
+            hits = results.Hits;
+            hybrid = results.Hybrid;
+            citedCount = Assistant.Enabled ? Assistant.SourceCount(hits.Count) : 0;
+            searchedQuery = query;
+            searchedTags = tags;
+            searchedKind = kind;
+            searchedCollection = collection;
+            elapsedMs = timer.ElapsedMilliseconds;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Search for {Query} in '{Collection}' failed", query, collection);
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+
+        // The first hit is previewed straight away, but not opened as a sheet on narrow screens.
+        if (hits is { Count: > 0 })
+        {
+            Select(0, open: false);
+        }
+    }
+
+    private void Select(int index, bool open = true)
+    {
+        selected = index;
+        previewOpen = open;
+        revealPending = true;
+        StateHasChanged();
+    }
+
+    // Returns false when there is nothing above to move to, so the keyboard can go back to the search box.
+    [JSInvokable]
+    public bool MoveSelection(int delta)
+    {
+        if (hits is not { Count: > 0 })
+        {
+            return false;
+        }
+
+        var next = Math.Max(selected, 0) + delta;
+        if (next < 0)
+        {
+            return false;
+        }
+
+        Select(Math.Min(next, hits.Count - 1));
+        return true;
+    }
+
+    [JSInvokable]
+    public void ClosePreview()
+    {
+        previewOpen = false;
+        StateHasChanged();
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is not null)
+        {
+            try
+            {
+                await module.InvokeVoidAsync("dispose");
+                await module.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+                // The circuit is gone, and the page with it.
+            }
+        }
+
+        selfReference?.Dispose();
+    }
+}

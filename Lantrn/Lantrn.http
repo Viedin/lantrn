@@ -1,0 +1,134 @@
+# The public API. Create a key under Developers > API keys (as an admin) and paste it below.
+# The full reference, generated from the OpenAPI document, is at {{baseUrl}}/api/reference.
+
+@baseUrl = http://localhost:5081
+@apiKey = lnt_paste-your-key-here
+@collection = handbook
+
+### OpenAPI document (no key needed)
+GET {{baseUrl}}/api/openapi/v1.json
+
+### Without a key: 401 problem details
+GET {{baseUrl}}/api/v1/collections
+
+### List collections
+GET {{baseUrl}}/api/v1/collections
+Authorization: Bearer {{apiKey}}
+
+### Create a collection
+POST {{baseUrl}}/api/v1/collections
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "{{collection}}",
+  "description": "The staff handbook"
+}
+
+### Create it again: 409 Conflict
+POST {{baseUrl}}/api/v1/collections
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "{{collection}}"
+}
+
+### Invalid name: 400 validation problem
+POST {{baseUrl}}/api/v1/collections
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "name": "Not Valid!"
+}
+
+### Get a collection
+GET {{baseUrl}}/api/v1/collections/{{collection}}
+Authorization: Bearer {{apiKey}}
+
+### Unknown collection: 404
+GET {{baseUrl}}/api/v1/collections/does-not-exist
+Authorization: Bearer {{apiKey}}
+
+### Ingest markdown
+POST {{baseUrl}}/api/v1/collections/{{collection}}/documents/markdown
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "source": "leave-policy.md",
+  "markdown": "# Leave\n\nEveryone gets 25 days of paid leave a year.\n\n## Carrying over\n\nUp to 5 unused days carry over to the next year.",
+  "tags": ["hr", "policies"],
+  "chunking": { "maxCharacters": 1500 }
+}
+
+### Ingest a file (multipart)
+POST {{baseUrl}}/api/v1/collections/{{collection}}/documents
+Authorization: Bearer {{apiKey}}
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="notes.md"
+Content-Type: text/markdown
+
+# Notes
+
+Uploaded through the API.
+--boundary
+Content-Disposition: form-data; name="tags"
+
+notes, api
+--boundary--
+
+### Ingest a web page
+POST {{baseUrl}}/api/v1/collections/{{collection}}/documents/url
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "url": "https://example.com/",
+  "tags": ["web"]
+}
+
+### List documents (optionally ?tag=hr&source=leave)
+GET {{baseUrl}}/api/v1/collections/{{collection}}/documents?tag=hr
+Authorization: Bearer {{apiKey}}
+
+### List tags
+GET {{baseUrl}}/api/v1/collections/{{collection}}/tags
+Authorization: Bearer {{apiKey}}
+
+### Get a document with its markdown (use an id from the list above)
+@documentId = 00000000-0000-0000-0000-000000000000
+GET {{baseUrl}}/api/v1/documents/{{documentId}}
+Authorization: Bearer {{apiKey}}
+
+### Download a document's original (PDFs and images only)
+GET {{baseUrl}}/api/v1/documents/{{documentId}}/original
+Authorization: Bearer {{apiKey}}
+
+### Replace a document's tags
+PUT {{baseUrl}}/api/v1/documents/{{documentId}}/tags
+Authorization: Bearer {{apiKey}}
+Content-Type: application/json
+
+{
+  "tags": ["hr"]
+}
+
+### Delete a document
+DELETE {{baseUrl}}/api/v1/documents/{{documentId}}
+Authorization: Bearer {{apiKey}}
+
+### Clear a collection (keeps the collection)
+DELETE {{baseUrl}}/api/v1/collections/{{collection}}/documents
+Authorization: Bearer {{apiKey}}
+
+### Delete a collection
+DELETE {{baseUrl}}/api/v1/collections/{{collection}}
+Authorization: Bearer {{apiKey}}
+
+### The default collection can't be deleted: 409
+DELETE {{baseUrl}}/api/v1/collections/documents
+Authorization: Bearer {{apiKey}}

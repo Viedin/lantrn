@@ -1,0 +1,276 @@
+@page "/settings"
+@rendermode InteractiveServer
+
+@using Lantrn.Infra
+@using Lantrn.Services
+
+@inject SettingsStore Store
+@inject ILogger<Settings> Log
+
+<PageTitle>Settings</PageTitle>
+
+<div class="page-heading">
+    <span class="eyebrow">Settings</span>
+    <h1>Access, models and endpoints</h1>
+    <p class="lead-text">
+        Any OpenAI-compatible server works, local or hosted. Changes apply to the next ingest or search.
+    </p>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+@if (saved)
+{
+    <div class="alert alert-success">Settings saved.</div>
+}
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <h2 class="section-label mb-0">Public search</h2>
+            <div class="form-check form-switch mb-0">
+                <input id="public-search" type="checkbox" role="switch" class="form-check-input" @bind="settings.Access.PublicSearch" />
+                <label class="form-check-label" for="public-search">@(settings.Access.PublicSearch ? "On" : "Off")</label>
+            </div>
+        </div>
+        <p class="small mb-0">
+            @if (settings.Access.PublicSearch)
+            {
+                <text>Anyone who can reach this site can search and read every document without signing in, and use the search assistant if it is on.</text>
+            }
+            else
+            {
+                <text>Visitors must sign in to search. Accounts are created by <a href="admin/users">invitation</a>.</text>
+            }
+        </p>
+    </div>
+</div>
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <h2 class="section-label mb-3">Embeddings</h2>
+
+        @if (EmbeddingModelChanged)
+        {
+            <div class="alert alert-warning">
+                Vectors from different models (or dimensions) don't match. Existing collections were embedded
+                with '@Store.Current.Embeddings.Model' and must be re-ingested to be searched with a new model.
+            </div>
+        }
+
+        <div class="row g-3">
+            <EndpointFields Id="embedding" Settings="settings.Embeddings" Preferred="embed" PreferredLabel="Embedding models" />
+            <div class="col-md-2">
+                <label class="form-label" for="embedding-dimensions">Dimensions</label>
+                <input id="embedding-dimensions" type="number" class="form-control" @bind="settings.Embeddings.Dimensions" @bind:event="oninput" placeholder="Model default" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="embedding-batch">Batch size</label>
+                <input id="embedding-batch" type="number" class="form-control" @bind="settings.Embeddings.BatchSize" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="embedding-timeout">Timeout (s)</label>
+                <input id="embedding-timeout" type="number" class="form-control" @bind="settings.Embeddings.TimeoutSeconds" />
+            </div>
+            <div class="col-12">
+                <label class="form-label" for="embedding-prefix">Query prefix</label>
+                <textarea id="embedding-prefix" class="form-control" rows="2" @bind="settings.Embeddings.QueryPrefix"></textarea>
+                <div class="form-text">Prepended to search queries only. Instruction-tuned models such as Qwen3-Embedding expect one.</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <h2 class="section-label mb-3">Vision</h2>
+        <p class="small">Transcribes uploaded images. The model must accept image input.</p>
+
+        <div class="row g-3">
+            @* Endpoints don't say which models take images, so the whole list is offered. *@
+            <EndpointFields Id="vision" Settings="settings.Vision" />
+            <div class="col-md-2">
+                <label class="form-label" for="vision-timeout">Timeout (s)</label>
+                <input id="vision-timeout" type="number" class="form-control" @bind="settings.Vision.TimeoutSeconds" />
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <h2 class="section-label mb-0">Search assistant</h2>
+            <div class="form-check form-switch mb-0">
+                <input id="assistant-enabled" type="checkbox" role="switch" class="form-check-input" @bind="settings.Assistant.Enabled" />
+                <label class="form-check-label" for="assistant-enabled">@(settings.Assistant.Enabled ? "On" : "Off")</label>
+            </div>
+        </div>
+        <p class="small">
+            Writes a short answer above the results, citing the passages it used. The top results' text is sent to
+            this endpoint with every search, so use a local server if your documents must stay on this machine.
+        </p>
+
+        @* Only shown while on, so its models are only fetched once it is turned on. *@
+        @if (settings.Assistant.Enabled)
+        {
+            <div class="row g-3">
+                <EndpointFields Id="assistant" Settings="settings.Assistant" />
+                <div class="col-md-2">
+                    <label class="form-label" for="assistant-sources">Sources</label>
+                    <input id="assistant-sources" type="number" class="form-control" @bind="settings.Assistant.MaxSources" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="assistant-timeout">Timeout (s)</label>
+                    <input id="assistant-timeout" type="number" class="form-control" @bind="settings.Assistant.TimeoutSeconds" />
+                </div>
+                <div class="col-12 form-text mt-1">Sources is how many of the top results the model reads for each answer.</div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="d-flex gap-2">
+    <button class="btn btn-primary" @onclick="SaveAsync" disabled="@busy">
+        @if (busy)
+        {
+            <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+        }
+        Save settings
+    </button>
+    <button class="btn btn-outline-danger ms-auto" @onclick="() => defaults = Store.CreateDefaults()" disabled="@busy">
+        <i class="bi bi-arrow-counterclockwise" aria-hidden="true"></i> Restore defaults
+    </button>
+</div>
+
+<DeleteConfirmModal Show="defaults is not null" Busy="busy" Title="Restore default settings?" ConfirmText="Restore defaults"
+                    OnConfirm="RestoreDefaultsAsync" OnCancel="() => defaults = null">
+    @if (defaults is not null)
+    {
+        <p>This replaces the saved settings straight away with:</p>
+        <ul>
+            <li>Public search: @(defaults.Access.PublicSearch ? "on" : "off")</li>
+            <li>Embeddings: <strong>@defaults.Embeddings.Model</strong> at <code>@defaults.Embeddings.BaseUrl</code></li>
+            <li>Vision: <strong>@defaults.Vision.Model</strong> at <code>@defaults.Vision.BaseUrl</code></li>
+            <li>
+                Search assistant: @(defaults.Assistant.Enabled ? "on" : "off"),
+                <strong>@defaults.Assistant.Model</strong> at <code>@defaults.Assistant.BaseUrl</code>
+            </li>
+        </ul>
+        <p class="mb-0">
+            API keys and the query prefix are replaced by the defaults too, which usually means they are cleared.
+            Unsaved edits on this page are lost.
+        </p>
+        @if (defaults.Embeddings.Model != Store.Current.Embeddings.Model || defaults.Embeddings.Dimensions != Store.Current.Embeddings.Dimensions)
+        {
+            <div class="alert alert-warning mt-3 mb-0">
+                The embedding model changes from '@Store.Current.Embeddings.Model', so existing collections must be re-ingested to be searchable.
+            </div>
+        }
+    }
+</DeleteConfirmModal>
+
+@code {
+    private AppSettings settings = new();
+    private string? error;
+    private bool saved;
+    private bool busy;
+    // Set while the restore confirmation is open, so it can show exactly what will be saved.
+    private AppSettings? defaults;
+
+    private bool EmbeddingModelChanged =>
+        settings.Embeddings.Model.Trim() != Store.Current.Embeddings.Model
+        || settings.Embeddings.Dimensions != Store.Current.Embeddings.Dimensions;
+
+    // A disabled assistant is never called, so whatever it holds can wait until it is turned on.
+    private IEnumerable<(string Name, IEndpointSettings Endpoint)> Endpoints()
+    {
+        yield return ("embeddings", settings.Embeddings);
+        yield return ("vision", settings.Vision);
+        if (settings.Assistant.Enabled)
+        {
+            yield return ("search assistant", settings.Assistant);
+        }
+    }
+
+    // Edit a copy: the store's instance is live for every circuit until saved.
+    protected override void OnInitialized() => settings = Store.Current.Copy();
+
+    private async Task RestoreDefaultsAsync()
+    {
+        await SaveAsync(defaults!);
+        defaults = null;
+    }
+
+    private Task SaveAsync()
+    {
+        foreach (var (_, endpoint) in Endpoints())
+        {
+            endpoint.BaseUrl = endpoint.BaseUrl.Trim();
+            endpoint.Model = endpoint.Model.Trim();
+        }
+
+        saved = false;
+        error = Validate();
+        return error is null ? SaveAsync(settings) : Task.CompletedTask;
+    }
+
+    private async Task SaveAsync(AppSettings toSave)
+    {
+        busy = true;
+        error = null;
+        saved = false;
+
+        try
+        {
+            await Store.SaveAsync(toSave);
+            settings = Store.Current.Copy();
+            saved = true;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Saving settings failed");
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private string? Validate()
+    {
+        foreach (var (name, endpoint) in Endpoints())
+        {
+            if (!Uri.TryCreate(endpoint.BaseUrl, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+            {
+                return $"The {name} endpoint must be an http or https URL.";
+            }
+            if (string.IsNullOrWhiteSpace(endpoint.Model))
+            {
+                return $"The {name} endpoint needs a model.";
+            }
+            if (endpoint.TimeoutSeconds <= 0)
+            {
+                return $"The {name} timeout must be positive.";
+            }
+        }
+
+        if (settings.Embeddings.Dimensions is <= 0)
+        {
+            return "Dimensions must be positive, or empty to use the model's default.";
+        }
+        if (settings.Embeddings.BatchSize <= 0)
+        {
+            return "Batch size must be positive.";
+        }
+        if (settings.Assistant.Enabled && settings.Assistant.MaxSources <= 0)
+        {
+            return "The search assistant's sources must be positive.";
+        }
+
+        return null;
+    }
+}

@@ -1,0 +1,267 @@
+@page "/collections/{Name}"
+@rendermode InteractiveServer
+
+@using Lantrn.Infra
+@using Lantrn.Services
+
+@inject DocumentStore Documents
+@inject ILogger<CollectionView> Log
+
+<PageTitle>@Name</PageTitle>
+
+@if (loading)
+{
+    <div class="d-flex align-items-center gap-2">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Loading collection…</span>
+    </div>
+}
+else if (collection is null)
+{
+    <div class="alert alert-warning">There is no collection named '@Name'.</div>
+}
+else
+{
+    <div class="page-heading d-flex flex-wrap align-items-end justify-content-between gap-3">
+        <div>
+            <span class="eyebrow">Collection</span>
+            <h1 class="text-break">@collection.Name</h1>
+            <p class="lead-text d-flex flex-wrap align-items-center gap-2">
+                @if (collection.Description is not null)
+                {
+                    <span>@collection.Description</span>
+                }
+                <span class="metric-pill metric-pill-neutral">@collection.DocumentCount.ToString("N0") documents</span>
+                <span class="metric-pill metric-pill-neutral">@collection.ChunkCount.ToString("N0") chunks</span>
+            </p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-primary" href="search?collection=@EscapedName">
+                <i class="bi bi-search" aria-hidden="true"></i> Search
+            </a>
+            <a class="btn btn-outline-primary" href="ingest?collection=@EscapedName">
+                <i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i> Add files
+            </a>
+            <a class="btn btn-outline-primary" href="crawl?collection=@EscapedName">
+                <i class="bi bi-globe2" aria-hidden="true"></i> Crawl a site
+            </a>
+        </div>
+    </div>
+
+    @if (Name == DocumentStore.DefaultCollection)
+    {
+        <div class="alert alert-info">
+            Files placed in <code>@Documents.FolderPath</code> are added to this collection automatically and re-embedded when they change.
+        </div>
+    }
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
+        <input class="form-control" style="max-width: 20rem;" @bind="sourceFilter" @bind:event="oninput" @bind:after="LoadDocumentsAsync"
+               placeholder="Filter by name or URL…" aria-label="Filter documents" />
+
+        @if (tags.Count > 0)
+        {
+            <div class="tag-chips" role="group" aria-label="Filter by tag">
+                @foreach (var tag in tags)
+                {
+                    var active = selectedTag == tag.Name;
+                    <button type="button" class="tag-chip @(active ? "active" : null)"
+                            aria-pressed="@(active ? "true" : "false")" @onclick="() => ToggleTagAsync(tag.Name)">
+                        @tag.Name <span class="tag-count">@tag.Documents</span>
+                    </button>
+                }
+            </div>
+        }
+    </div>
+
+    @if (documents.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon" aria-hidden="true"><i class="bi bi-file-earmark-text"></i></span>
+            @if (selectedTag is null && string.IsNullOrWhiteSpace(sourceFilter))
+            {
+                <h2>Nothing indexed yet</h2>
+                <p>Add files or crawl a site into this collection to make it searchable.</p>
+            }
+            else
+            {
+                <h2>No matching documents</h2>
+                <p>Clear the filter or pick another tag.</p>
+            }
+        </div>
+    }
+    else
+    {
+        <div class="card overflow-hidden">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Document</th>
+                            <th>Tags</th>
+                            <th class="text-end">Chunks</th>
+                            <th>Ingested</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var document in documents)
+                        {
+                            <tr>
+                                <td>
+                                    <a class="fw-semibold text-body-emphasis text-break" href="documents/@document.Id">@document.Source</a>
+                                    <div class="small">
+                                        @document.Characters.ToString("N0") chars
+                                        @if (document.Kind == DocumentKind.Ocr)
+                                        {
+                                            <span class="metric-pill ms-1" title="Text read from an image"><i class="bi bi-image" aria-hidden="true"></i> OCR</span>
+                                        }
+                                    </div>
+                                </td>
+                                <td>
+                                    @if (editingId == document.Id)
+                                    {
+                                        <div class="d-flex gap-2">
+                                            <TagInput Tags="document.Tags" Busy="busy" OnSave="tags => SaveTagsAsync(document.Id, tags)"
+                                                      OnCancel="() => editingId = null" />
+                                        </div>
+                                    }
+                                    else
+                                    {
+                                        <div class="d-flex flex-wrap gap-1">
+                                            @foreach (var tag in document.Tags)
+                                            {
+                                                <span class="metric-pill metric-pill-neutral">@tag</span>
+                                            }
+                                        </div>
+                                    }
+                                </td>
+                                <td class="text-end">@document.ChunkCount.ToString("N0")</td>
+                                <td>@document.IngestedAt.ToLocalTime().ToString("g")</td>
+                                <td class="text-end text-nowrap">
+                                    <button class="btn btn-sm btn-outline-primary" @onclick="() => editingId = document.Id"
+                                            title="Edit tags" aria-label="Edit tags of @document.Source">
+                                        <i class="bi bi-tags" aria-hidden="true"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingDelete = document"
+                                            title="Delete document" aria-label="Delete @document.Source">
+                                        <i class="bi bi-trash" aria-hidden="true"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+
+    <DeleteConfirmModal Show="@(pendingDelete is not null)" Busy="busy" Title="Delete document?"
+                         OnConfirm="DeleteAsync" OnCancel="() => pendingDelete = null">
+        Remove <strong>@pendingDelete?.Source</strong> and its vectors? This can't be undone.
+    </DeleteConfirmModal>
+}
+
+@code {
+    [Parameter]
+    public string Name { get; set; } = string.Empty;
+
+    private CollectionSummary? collection;
+    private IReadOnlyList<DocumentSummary> documents = [];
+    private IReadOnlyList<TagCount> tags = [];
+    private string? selectedTag;
+    private string sourceFilter = string.Empty;
+    private bool loading = true;
+    private bool busy;
+    private string? error;
+
+    private Guid? editingId;
+    private DocumentSummary? pendingDelete;
+
+    private string EscapedName => Uri.EscapeDataString(Name);
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        selectedTag = null;
+        sourceFilter = string.Empty;
+
+        collection = await Documents.GetCollectionAsync(Name);
+        if (collection is not null)
+        {
+            await LoadTagsAsync();
+            await LoadDocumentsAsync();
+        }
+
+        loading = false;
+    }
+
+    private async Task LoadDocumentsAsync()
+    {
+        documents = await Documents.ListDocumentsAsync(Name, selectedTag, sourceFilter);
+    }
+
+    private async Task LoadTagsAsync()
+    {
+        tags = await Documents.ListTagsAsync(Name);
+        if (selectedTag is not null && tags.All(t => t.Name != selectedTag))
+        {
+            selectedTag = null;
+        }
+    }
+
+    private async Task ReloadAsync()
+    {
+        collection = await Documents.GetCollectionAsync(Name);
+        await LoadTagsAsync();
+        await LoadDocumentsAsync();
+    }
+
+    private async Task ToggleTagAsync(string tag)
+    {
+        selectedTag = selectedTag == tag ? null : tag;
+        await LoadDocumentsAsync();
+    }
+
+    private async Task SaveTagsAsync(Guid id, IReadOnlyList<string> newTags)
+    {
+        await RunAsync(async () =>
+        {
+            await Documents.SetTagsAsync(id, newTags);
+            editingId = null;
+        }, "Retagging document {DocumentId} failed", id);
+    }
+
+    private async Task DeleteAsync()
+    {
+        var id = pendingDelete!.Id;
+        await RunAsync(() => Documents.DeleteAsync(id), "Deleting document {DocumentId} failed", id);
+        pendingDelete = null;
+    }
+
+    private async Task RunAsync(Func<Task> action, string failureMessage, Guid id)
+    {
+        busy = true;
+        error = null;
+
+        try
+        {
+            await action();
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, failureMessage, id);
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

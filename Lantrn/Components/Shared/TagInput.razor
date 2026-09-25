@@ -1,0 +1,34 @@
+@using Lantrn.Services
+
+@* Edits a document's tags as comma separated text; Enter saves and Escape cancels. *@
+<input class="form-control form-control-sm" style="min-width: 12rem; max-width: 20rem;" @bind="text" @bind:event="oninput"
+       @onkeydown="OnKeyDownAsync" placeholder="tag-a, tag-b" aria-label="Tags" />
+<button class="btn btn-sm btn-primary" @onclick="SaveAsync" disabled="@Busy">Save</button>
+<button class="btn btn-sm btn-link" @onclick="OnCancel">Cancel</button>
+
+@code {
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Tags { get; set; } = [];
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback<IReadOnlyList<string>> OnSave { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private string text = string.Empty;
+
+    protected override void OnInitialized() => text = string.Join(", ", Tags);
+
+    private Task SaveAsync() => OnSave.InvokeAsync(DocumentStore.ParseTags(text));
+
+    private Task OnKeyDownAsync(KeyboardEventArgs e) => e.Key switch
+    {
+        "Enter" => SaveAsync(),
+        "Escape" => OnCancel.InvokeAsync(),
+        _ => Task.CompletedTask,
+    };
+}

@@ -1,0 +1,182 @@
+.results-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem 1rem;
+    margin-bottom: 0.5rem;
+    padding-inline: 0.75rem;
+}
+
+.results-detail {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.75rem;
+    color: var(--bo-ink-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.result-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+/* A search-engine row: where it lives, what it is, and the words that matched. */
+.result-row {
+    position: relative;
+    display: flex;
+    gap: 0.9rem;
+    padding: 0.8rem 0.75rem;
+    cursor: pointer;
+    border-radius: var(--bs-border-radius-lg);
+    scroll-margin-top: calc(var(--search-pane-top) + 0.5rem);
+    scroll-margin-bottom: 1rem;
+    transition: background-color 0.12s ease;
+}
+
+.result-row + .result-row::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    left: 0.75rem;
+    right: 0.75rem;
+    border-top: 1px solid var(--bo-line);
+}
+
+.result-row:hover {
+    background-color: color-mix(in srgb, var(--bo-surface) 70%, transparent);
+}
+
+.result-row.is-selected {
+    background-color: var(--bo-surface);
+    box-shadow: var(--bo-shadow-sm), inset 4px 0 0 var(--tone, var(--bo-accent));
+}
+
+/* The rule between rows would cut through the selected row's rounded edge. */
+.result-row.is-selected::before,
+.result-row.is-selected + .result-row::before {
+    display: none;
+}
+
+.result-row.is-skeleton {
+    cursor: default;
+}
+
+.result-main {
+    flex: 1;
+    min-width: 0;
+}
+
+.result-crumb {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.15rem;
+}
+
+.result-crumb-text {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 0.74rem;
+    color: var(--bo-ink-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.result-title {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--bo-ink);
+    font-size: 0.98rem;
+    font-weight: 600;
+    line-height: 1.35;
+    text-decoration: none;
+    overflow-wrap: anywhere;
+}
+
+a.result-title:hover {
+    color: var(--bo-accent-text);
+    text-decoration: underline;
+}
+
+.result-row.is-selected .result-title {
+    color: var(--bo-ink);
+}
+
+.result-snippet {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    margin: 0;
+    overflow: hidden;
+    color: color-mix(in srgb, var(--bo-ink) 78%, var(--bo-ink-muted));
+    font-size: 0.86rem;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+.result-snippet ::deep mark {
+    padding: 0 0.1em;
+    background-color: var(--bo-highlight);
+    border-radius: 0.2rem;
+    color: #000;
+    font-weight: 600;
+}
+
+.result-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+    margin-top: 0.45rem;
+}
+
+.result-thumb {
+    flex: none;
+    align-self: center;
+    width: 4.5rem;
+    height: 4.5rem;
+    object-fit: cover;
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius);
+    background-color: var(--bo-surface-sunken);
+}
+
+/* Relevance as a length: the order is what matters, the number is in the tooltip. */
+.score-meter {
+    flex: none;
+    display: block;
+    width: 2.5rem;
+    height: 0.25rem;
+    overflow: hidden;
+    background-color: var(--bo-surface-sunken);
+    border-radius: 999px;
+}
+
+.score-meter > span {
+    display: block;
+    height: 100%;
+    border-radius: 999px;
+    background-color: var(--bo-accent);
+}
+
+/* Without a pane beside it, the highlight would only mark what was last opened. */
+@media (max-width: 991.98px) {
+    .result-row.is-selected {
+        background-color: transparent;
+        box-shadow: none;
+    }
+
+    .result-row.is-selected .result-title {
+        color: var(--bo-ink);
+    }
+
+    .result-row.is-selected::before,
+    .result-row.is-selected + .result-row::before {
+        display: block;
+    }
+}

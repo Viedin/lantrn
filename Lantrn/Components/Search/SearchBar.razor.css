@@ -1,0 +1,127 @@
+/* One raised surface holding the icon, field and submit button. */
+.searchbar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.4rem 0.45rem 0.4rem 1rem;
+    background-color: var(--bo-surface);
+    border: 2px solid var(--bo-line);
+    border-radius: 999px;
+    box-shadow: var(--bo-shadow-md);
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.is-landing .searchbar {
+    padding: 0.55rem 0.55rem 0.55rem 1.25rem;
+}
+
+/* Focused: the border slowly turns through the palette, two colours at a time (bo-flow, app.css).
+   The surface is painted inside the padding box and the gradient in the border box, so only the border shows it. */
+.searchbar:focus-within {
+    --flow-a: oklch(var(--flow-l) var(--flow-c) var(--flow-h));
+    --flow-b: oklch(var(--flow-l) var(--flow-c) calc(var(--flow-h) + 60));
+    border-color: transparent;
+    background:
+        linear-gradient(var(--bo-surface), var(--bo-surface)) padding-box,
+        linear-gradient(90deg, var(--flow-a), var(--flow-b)) border-box;
+    box-shadow: var(--bo-shadow-md), 0 0 0 0.25rem color-mix(in srgb, var(--flow-a) 22%, transparent);
+    animation: bo-flow 18s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .searchbar:focus-within {
+        animation: none;
+    }
+}
+
+.searchbar-icon {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.15rem;
+    font-size: 1.05rem;
+    color: var(--bo-ink-muted);
+}
+
+.searchbar:focus-within .searchbar-icon {
+    color: var(--bo-accent-text);
+}
+
+.searchbar-input {
+    flex: 1;
+    min-width: 0;
+    padding: 0.5rem 0;
+    background: none;
+    border: none;
+    outline: none;
+    color: var(--bo-ink);
+    font-size: 1.05rem;
+    font-family: inherit;
+}
+
+.is-landing .searchbar-input {
+    font-size: 1.15rem;
+}
+
+.searchbar-input::placeholder {
+    color: color-mix(in srgb, var(--bo-ink-muted) 70%, transparent);
+}
+
+.searchbar-clear {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    color: var(--bo-ink-muted);
+    font-size: 0.8rem;
+    opacity: 0.55;
+    transition: opacity 0.15s ease, background-color 0.15s ease;
+}
+
+.searchbar-clear:hover {
+    background-color: var(--bo-surface-sunken);
+    opacity: 1;
+}
+
+.searchbar-hint {
+    flex: none;
+    line-height: 1;
+}
+
+.searchbar-submit {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.45rem;
+    border-radius: 999px;
+    padding-inline: 1.35rem;
+}
+
+@media (max-width: 575.98px) {
+    .searchbar {
+        flex-wrap: wrap;
+        border-radius: var(--bs-border-radius-lg);
+        padding: 0.75rem;
+    }
+
+    .searchbar-input {
+        font-size: 1rem;
+    }
+
+    .searchbar-submit {
+        width: 100%;
+        justify-content: center;
+    }
+
+    /* No Enter key worth hinting at on a phone keyboard, and the bar wraps as it is. */
+    .searchbar-hint {
+        display: none;
+    }
+}

@@ -1,0 +1,44 @@
+/* No bars: the page is the content, with the logo and menu button sitting in the top corners (NavMenu). */
+.page {
+    position: relative;
+    min-height: 100vh;
+}
+
+/* The top padding leaves room for the logo and menu button so it never sits on the first line of a page. */
+.content {
+    padding: 4.5rem 1.25rem 3rem;
+}
+
+/* Keep long markdown and result lists at a comfortable reading width */
+.content-inner {
+    width: 100%;
+    max-width: 68rem;
+    margin-inline: auto;
+}
+
+@media (min-width: 641px) {
+    .content {
+        padding-inline: 2.5rem;
+    }
+}
+
+#blazor-error-ui {
+    color-scheme: light only;
+    background: lightyellow;
+    bottom: 0;
+    box-shadow: 0 -1px 2px rgba(0, 0, 0, 0.2);
+    box-sizing: border-box;
+    display: none;
+    left: 0;
+    padding: 0.6rem 1.25rem 0.7rem 1.25rem;
+    position: fixed;
+    width: 100%;
+    z-index: 1000;
+}
+
+    #blazor-error-ui .dismiss {
+        cursor: pointer;
+        position: absolute;
+        right: 0.75rem;
+        top: 0.5rem;
+    }

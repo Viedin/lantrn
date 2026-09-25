@@ -1,0 +1,7 @@
+<Router AppAssembly="typeof(Program).Assembly" NotFoundPage="typeof(Pages.NotFound)">
+    <Found Context="routeData">
+        <AuthorizeRouteView RouteData="routeData" DefaultLayout="typeof(Layout.MainLayout)" />
+        @* A page's autofocus field wins over its heading; enhanced navigation ignores the attribute itself. *@
+        <FocusOnNavigate RouteData="routeData" Selector="body:has([autofocus]) [autofocus], body:not(:has([autofocus])) h1" />
+    </Found>
+</Router>

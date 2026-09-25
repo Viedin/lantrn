@@ -1,0 +1,22 @@
+@implements IDisposable
+
+@inject AuthenticationStateProvider AuthenticationStateProvider
+@inject NavigationManager Navigation
+
+@code {
+    // The router renders statically, so an open page never re-checks its [Authorize] on its own. When revalidation
+    // signs the circuit out (deleted user, new password, changed role), reload so the server decides again.
+    protected override void OnInitialized() =>
+        AuthenticationStateProvider.AuthenticationStateChanged += OnAuthenticationStateChanged;
+
+    private async void OnAuthenticationStateChanged(Task<AuthenticationState> state)
+    {
+        if ((await state).User.Identity?.IsAuthenticated != true)
+        {
+            await InvokeAsync(() => Navigation.Refresh(forceReload: true));
+        }
+    }
+
+    public void Dispose() =>
+        AuthenticationStateProvider.AuthenticationStateChanged -= OnAuthenticationStateChanged;
+}

@@ -1,0 +1,223 @@
+@page "/crawl"
+@rendermode InteractiveServer
+
+@using Lantrn.Services
+
+@implements IDisposable
+
+@inject WebCrawler Crawler
+@inject DocumentExtractor Extractor
+@inject EmbeddingService Embeddings
+@inject DocumentStore Documents
+@inject ILogger<Crawl> Log
+
+<PageTitle>Crawl a website</PageTitle>
+
+<div class="page-heading">
+    <span class="eyebrow">Ingest</span>
+    <h1>Crawl a website</h1>
+    <p class="lead-text">
+        Follow links and the sitemap from a start URL, keep the pages under one path, and let Xberg strip navigation, headers and footers before chunking and embedding with @Embeddings.Model.
+    </p>
+</div>
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <div class="row g-3 mb-3">
+            <div class="col-md-8">
+                <label class="form-label" for="url">Start URL</label>
+                <input id="url" type="url" class="form-control" @bind="startUrl" @bind:after="OnStartUrlChanged" placeholder="https://openrouter.ai/docs/quickstart" />
+            </div>
+            <div class="col-md-4">
+                <label class="form-label" for="scope">Only pages under</label>
+                <input id="scope" class="form-control" @bind="scope" placeholder="/docs" />
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <CollectionSelect Id="collection" Collections="collections" @bind-Value="collection" />
+            </div>
+            <div class="col-md-8">
+                <label class="form-label" for="tags">Tags</label>
+                <input id="tags" class="form-control" @bind="tagsInput" placeholder="openrouter, docs" />
+                <div class="form-text">Comma separated. Applied to every page in this crawl and usable as a search filter.</div>
+            </div>
+        </div>
+
+        <details class="disclosure mb-3">
+            <summary>Advanced settings</summary>
+            <div class="row g-3">
+                <div class="col-sm">
+                    <label class="form-label" for="max-pages">Max pages <InfoTip Text="@HelpText.MaxPages" /></label>
+                    <input id="max-pages" type="number" class="form-control" @bind="maxPages" />
+                </div>
+                <ChunkingFields Options="options" />
+            </div>
+        </details>
+
+        <button class="btn btn-primary" @onclick="RunAsync" disabled="@(!IsValidUrl || string.IsNullOrEmpty(collection) || busy)">
+            @if (busy)
+            {
+                <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+            }
+            Crawl into @(string.IsNullOrEmpty(collection) ? "collection" : $"'{collection}'")
+        </button>
+    </div>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (progress is not null)
+{
+    <IngestProgress Tally="progress" Unit="pages" Busy="busy" OnStop="Stop" />
+}
+
+<IngestResults Entries="results" />
+
+@code {
+    private List<IngestResults.Entry> results = [];
+    private string? error;
+    private bool busy;
+    private IngestProgress.State? progress;
+    private CancellationTokenSource? cancellation;
+
+    private string startUrl = string.Empty;
+    private string scope = string.Empty;
+    private string tagsInput = string.Empty;
+    private int maxPages = 100;
+    private readonly IngestOptions options = new();
+    private IReadOnlyList<CollectionSummary> collections = [];
+    private string collection = string.Empty;
+
+    [SupplyParameterFromQuery(Name = "collection")]
+    public string? CollectionParameter { get; set; }
+
+    protected override async Task OnInitializedAsync()
+    {
+        collections = await Documents.ListCollectionsAsync();
+        collection = CollectionSelect.Pick(collections, CollectionParameter);
+    }
+
+    private bool IsValidUrl =>
+        Uri.TryCreate(startUrl, UriKind.Absolute, out var url) && url.Scheme is "http" or "https";
+
+    // Blazor only re-renders an event handler at its first await and on completion,
+    // so the crawl loop calls this to show each step.
+    private void ReportProgress(string step)
+    {
+        progress!.Step = step;
+        StateHasChanged();
+    }
+
+    private void Stop()
+    {
+        cancellation?.Cancel();
+        progress!.Stopping = true;
+    }
+
+    // "https://openrouter.ai/docs/quickstart" pre-fills "/docs" unless a prefix was already typed.
+    private void OnStartUrlChanged()
+    {
+        if (string.IsNullOrWhiteSpace(scope) && Uri.TryCreate(startUrl, UriKind.Absolute, out var url))
+        {
+            scope = WebCrawler.DefaultScope(url);
+        }
+    }
+
+    private async Task RunAsync()
+    {
+        error = maxPages <= 0 ? "Max pages must be positive." : options.Validate();
+        if (!IsValidUrl || string.IsNullOrEmpty(collection) || error is not null)
+        {
+            return;
+        }
+
+        busy = true;
+        results = [];
+        progress = new IngestProgress.State();
+        cancellation = new CancellationTokenSource();
+        var cancellationToken = cancellation.Token;
+
+        var start = new Uri(startUrl);
+        var prefix = string.IsNullOrWhiteSpace(scope) ? WebCrawler.DefaultScope(start) : scope;
+        var tags = DocumentStore.ParseTags(tagsInput);
+
+        try
+        {
+            ReportProgress($"Reading the sitemap and following links from {start}");
+
+            // Find every page before ingesting any, so the progress counts against the real total.
+            IReadOnlyList<Uri> pages;
+            try
+            {
+                pages = await Crawler.MapAsync(start, prefix, maxPages, cancellationToken);
+            }
+            catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+            {
+                // Per-page failures are caught in the loop; this is the map itself (DNS, refused private address, and so on).
+                Log.LogError(ex, "Mapping {Start} failed", start);
+                error = $"Could not find pages at {start}: {ex.Message}";
+                progress.Step = "Nothing was stored.";
+                return;
+            }
+
+            progress.Total = pages.Count;
+
+            foreach (var page in pages)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                // The URL is the source in Qdrant, so search hits point back at the page.
+                var entry = new IngestResults.Entry(page.ToString());
+                results.Add(entry);
+
+                try
+                {
+                    ReportProgress($"Fetching {page}");
+                    var fetched = await Crawler.FetchAsync(page, cancellationToken);
+
+                    ReportProgress($"Extracting {page}");
+                    var extracted = await Extractor.IngestAsync(fetched.Bytes, fetched.FileName, options, cancellationToken);
+
+                    ReportProgress($"Embedding {extracted.Chunks.Count} chunks from {page}");
+                    extracted = extracted with { Chunks = await Embeddings.EmbedChunksAsync(extracted.Chunks, entry.Name, cancellationToken) };
+
+                    // Not cancellable: a store cut short would leave the database and Qdrant out of step.
+                    ReportProgress($"Storing {page} in '{collection}'");
+                    progress.Chunks += (await Documents.StoreAsync(collection, entry.Name, extracted, tags)).ChunkCount;
+                    progress.Stored++;
+                    entry.Result = extracted;
+                }
+                catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+                {
+                    Log.LogError(ex, "Ingest of {Url} failed", page);
+                    entry.Error = ex.Message;
+                    progress.Failed++;
+                }
+
+                progress.Done++;
+            }
+
+            var tagText = tags.Count > 0 ? $" tagged [{string.Join(", ", tags)}]" : string.Empty;
+            progress.Step = $"Stored {progress.Stored} of {results.Count} pages in '{collection}'{tagText}.";
+        }
+        catch (OperationCanceledException)
+        {
+            // The page that was in flight when Stop was pressed has neither a result nor an error.
+            results.RemoveAll(r => r.Result is null && r.Error is null);
+            progress.Step = $"Stopped. Stored {progress.Stored} of {progress.Total} pages in '{collection}'.";
+        }
+        finally
+        {
+            busy = false;
+            cancellation.Dispose();
+            cancellation = null;
+        }
+    }
+
+    public void Dispose() => cancellation?.Cancel();
+}

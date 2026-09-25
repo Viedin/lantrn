@@ -1,0 +1,277 @@
+@page "/admin/users"
+@rendermode InteractiveServer
+
+@using System.ComponentModel.DataAnnotations
+@using System.Security.Claims
+@using Lantrn.Services
+@using Microsoft.AspNetCore.Identity
+
+@inject AccountService Accounts
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<Users> Log
+
+<PageTitle>Users</PageTitle>
+
+<div class="page-heading">
+    <span class="eyebrow">Admin</span>
+    <h1>Users</h1>
+    <p class="lead-text">
+        Admins manage documents, settings and users. Everyone else can search and read. Whether they need an
+        account for that is set under <a href="settings">Settings</a>.
+    </p>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <h2 class="section-label mb-3">Invite someone</h2>
+
+        <form class="row g-2 align-items-end" @onsubmit="InviteAsync">
+            <div class="col-sm">
+                <label class="form-label" for="invite-email">Email</label>
+                <input id="invite-email" type="email" class="form-control" @bind="inviteEmail" @bind:event="oninput"
+                       placeholder="name@example.com" autocomplete="off" />
+            </div>
+            <div class="col-sm-auto">
+                <button type="submit" class="btn btn-primary w-100" disabled="@(busy || string.IsNullOrWhiteSpace(inviteEmail))">
+                    <i class="bi bi-envelope-plus" aria-hidden="true"></i> Create invite
+                </button>
+            </div>
+        </form>
+
+        @if (inviteLink is not null)
+        {
+            <div class="alert alert-success mt-3 mb-0">
+                <p class="mb-2">
+                    Send this link to <strong>@invitedEmail</strong>. It works once, expires in
+                    @AccountService.InvitationLifetime.Days days, and won't be shown again.
+                </p>
+                <div class="input-group">
+                    <input class="form-control font-monospace" value="@inviteLink" readonly aria-label="Invite link" />
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CopyLinkAsync">
+                        <i class="bi @(copied ? "bi-check2" : "bi-clipboard")" aria-hidden="true"></i> @(copied ? "Copied" : "Copy")
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+@if (invitations.Count > 0)
+{
+    <div class="card card-panel mb-4">
+        <div class="card-body">
+            <h2 class="section-label mb-3">Pending invites</h2>
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Email</th>
+                            <th>Invited by</th>
+                            <th>Expires</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var invitation in invitations)
+                        {
+                            var expired = invitation.ExpiresAt <= DateTime.UtcNow;
+                            <tr @key="invitation.Id">
+                                <td class="text-break">@invitation.Email</td>
+                                <td class="text-break">@(invitation.InvitedBy ?? "–")</td>
+                                <td>
+                                    @if (expired)
+                                    {
+                                        <span class="metric-pill metric-pill-danger">Expired</span>
+                                    }
+                                    else
+                                    {
+                                        @invitation.ExpiresAt.ToLocalTime().ToString("g")
+                                    }
+                                </td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-danger" disabled="@busy" @onclick="() => RevokeAsync(invitation)">
+                                        @(expired ? "Remove" : "Revoke")
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+}
+
+<div class="card card-panel">
+    <div class="card-body">
+        <h2 class="section-label mb-3">Accounts</h2>
+        <div class="table-responsive">
+            <table class="table align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th>Email</th>
+                        <th>Role</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in users)
+                    {
+                        var self = user.Id == currentUserId;
+                        <tr @key="user.Id">
+                            <td class="text-break">
+                                @user.Email
+                                @if (self)
+                                {
+                                    <span class="small ms-1">(you)</span>
+                                }
+                            </td>
+                            <td>
+                                @if (user.IsAdmin)
+                                {
+                                    <span class="metric-pill">Admin</span>
+                                }
+                                else
+                                {
+                                    <span class="metric-pill metric-pill-neutral">Reader</span>
+                                }
+                            </td>
+                            <td class="text-end text-nowrap">
+                                @* Changing your own role or account would sign this page out from under you. *@
+                                @if (!self)
+                                {
+                                    <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="() => SetAdminAsync(user, !user.IsAdmin)">
+                                        @(user.IsAdmin ? "Make reader" : "Make admin")
+                                    </button>
+                                    <button class="btn btn-sm btn-outline-danger ms-1" disabled="@busy" @onclick="() => deleting = user">
+                                        <i class="bi bi-trash" aria-hidden="true"></i> Delete
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+<DeleteConfirmModal Show="deleting is not null" Busy="busy" Title="Delete account?"
+                    OnConfirm="DeleteAsync" OnCancel="() => deleting = null">
+    Remove <strong>@deleting?.Email</strong>? They are signed out and can only come back with a new invite.
+</DeleteConfirmModal>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private IReadOnlyList<UserSummary> users = [];
+    private IReadOnlyList<InvitationSummary> invitations = [];
+    private string? currentUserId;
+    private string? currentEmail;
+
+    private string inviteEmail = string.Empty;
+    private string? invitedEmail;
+    private string? inviteLink;
+    private bool copied;
+
+    private UserSummary? deleting;
+    private bool busy;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var user = (await AuthenticationState).User;
+        currentUserId = user.FindFirstValue(ClaimTypes.NameIdentifier);
+        currentEmail = user.Identity?.Name;
+        await LoadAsync();
+    }
+
+    private async Task LoadAsync()
+    {
+        users = await Accounts.ListUsersAsync();
+        invitations = await Accounts.ListInvitationsAsync();
+    }
+
+    private Task InviteAsync() => RunAsync(async () =>
+    {
+        var email = inviteEmail.Trim();
+        if (!new EmailAddressAttribute().IsValid(email))
+        {
+            error = "That doesn't look like an email address.";
+            return;
+        }
+
+        var token = await Accounts.CreateInvitationAsync(email, currentEmail);
+        inviteLink = $"{Navigation.BaseUri}account/register?invite={Uri.EscapeDataString(token)}";
+        invitedEmail = email;
+        inviteEmail = string.Empty;
+        copied = false;
+    }, "Creating an invite");
+
+    private async Task CopyLinkAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", inviteLink);
+            copied = true;
+        }
+        catch (JSException)
+        {
+            // Clipboard access needs a secure context; the link can still be selected by hand.
+            error = "Couldn't copy the link. Select it and copy it instead.";
+        }
+    }
+
+    private Task RevokeAsync(InvitationSummary invitation) =>
+        RunAsync(() => Accounts.RevokeInvitationAsync(invitation.Id), "Revoking an invite");
+
+    private Task SetAdminAsync(UserSummary user, bool admin) =>
+        RunAsync(async () => ReportFailure(await Accounts.SetAdminAsync(user.Id, admin)), "Changing a role");
+
+    private Task DeleteAsync() => RunAsync(async () =>
+    {
+        ReportFailure(await Accounts.DeleteUserAsync(deleting!.Id));
+        deleting = null;
+    }, "Deleting a user");
+
+    private void ReportFailure(IdentityResult result)
+    {
+        if (!result.Succeeded)
+        {
+            error = string.Join(" ", result.Errors.Select(e => e.Description));
+        }
+    }
+
+    // Every action reloads the lists, so they reflect what other admins did too.
+    private async Task RunAsync(Func<Task> action, string description)
+    {
+        busy = true;
+        error = null;
+
+        try
+        {
+            await action();
+            await LoadAsync();
+        }
+        catch (InvalidOperationException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "{Action} failed", description);
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

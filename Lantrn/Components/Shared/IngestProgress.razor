@@ -1,0 +1,60 @@
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <div class="d-flex align-items-center gap-3 mb-2">
+            @* A crawl only knows its total once the site is mapped. *@
+            @if (Tally.Total > 0)
+            {
+                <strong class="flex-shrink-0 text-body-emphasis">@Tally.Done / @Tally.Total @Unit</strong>
+            }
+            <span class="text-truncate small flex-grow-1">@Tally.Step</span>
+            @if (Busy)
+            {
+                <button class="btn btn-sm btn-outline-danger" @onclick="OnStop" disabled="@Tally.Stopping">
+                    @(Tally.Stopping ? "Stopping…" : "Stop")
+                </button>
+            }
+        </div>
+
+        <div class="progress mb-3" role="progressbar" aria-label="Ingest progress"
+             aria-valuenow="@Percent" aria-valuemin="0" aria-valuemax="100">
+            <div class="progress-bar @(Busy ? "progress-bar-striped progress-bar-animated" : "")" style="width: @(Percent)%"></div>
+        </div>
+
+        <div class="d-flex flex-wrap gap-2">
+            <span class="metric-pill">@Tally.Stored stored</span>
+            <span class="metric-pill metric-pill-neutral">@Tally.Chunks chunks</span>
+            @if (Tally.Failed > 0)
+            {
+                <span class="metric-pill metric-pill-danger">@Tally.Failed failed</span>
+            }
+        </div>
+    </div>
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public State Tally { get; set; } = new();
+
+    [Parameter, EditorRequired]
+    public string Unit { get; set; } = string.Empty;
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback OnStop { get; set; }
+
+    // Integer so the style attribute never picks up a culture's decimal comma.
+    private int Percent => Tally.Total == 0 ? 0 : Math.Min(100, Tally.Done * 100 / Tally.Total);
+
+    public sealed class State
+    {
+        public int Total { get; set; }
+        public int Done { get; set; }
+        public int Stored { get; set; }
+        public int Chunks { get; set; }
+        public int Failed { get; set; }
+        public string? Step { get; set; }
+        public bool Stopping { get; set; }
+    }
+}

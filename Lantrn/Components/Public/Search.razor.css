@@ -1,0 +1,103 @@
+/* ---------------------------------------------------------------------------
+   Page states: a centred hero before the first search, then a search bar that
+   stays pinned above a result list and its preview. The parts style themselves
+   in Components/Search.
+   --------------------------------------------------------------------------- */
+
+.search-page {
+    /* Where pinned things start: there is no bar above the page, so the very top. */
+    --search-sticky-top: 0px;
+    --search-bar-band: 4.6rem;
+    --search-pane-top: calc(var(--search-sticky-top) + var(--search-bar-band));
+}
+
+.search-page.is-landing {
+    max-width: 44rem;
+    margin: 6vh auto 0;
+}
+
+.search-hero {
+    margin-bottom: 1.75rem;
+    text-align: center;
+}
+
+.hero-logo {
+    display: block;
+    width: 3.5rem;
+    height: 3.5rem;
+    margin: 0 auto 1rem;
+}
+
+/* Black on yellow in both themes, like the matched terms in results */
+.hero-mark {
+    padding-inline: 0.15em;
+    border-radius: 0.3rem;
+    background-color: var(--bo-highlight);
+    color: #000;
+}
+
+.search-hero h1 {
+    margin-bottom: 0.5rem;
+    font-size: 2rem;
+}
+
+.search-hero .lead-text {
+    max-width: 52ch;
+    margin: 0 auto;
+    color: var(--bo-ink-muted);
+}
+
+.search-shortcuts {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 0.5rem 1.25rem;
+    margin-top: 2.5rem;
+    font-size: 0.78rem;
+    color: var(--bo-ink-muted);
+}
+
+.search-shortcuts span {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.has-query .search-top {
+    position: sticky;
+    top: var(--search-sticky-top);
+    z-index: 2;
+    margin-inline: -0.5rem;
+    padding: 0.6rem 0.5rem;
+    background-color: var(--bo-bg);
+}
+
+/* The preview is where reading happens, so it gets the larger share; the list only needs to be scannable. */
+.results-layout {
+    display: grid;
+    grid-template-columns: minmax(18rem, 2fr) minmax(0, 3fr);
+    gap: 1.5rem;
+    align-items: start;
+}
+
+/* Too narrow for two panes: the list takes the width and the preview becomes a sheet. */
+@media (max-width: 991.98px) {
+    .results-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+@media (max-width: 575.98px) {
+    .search-page.is-landing {
+        margin-top: 1rem;
+    }
+
+    .search-hero h1 {
+        font-size: 1.5rem;
+    }
+
+    /* No keyboard worth hinting at on a phone. */
+    .search-shortcuts {
+        display: none;
+    }
+}

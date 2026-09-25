@@ -1,0 +1,19 @@
+@using Lantrn.Services
+
+@if (Raw)
+{
+    <pre class="mb-0" style="white-space: pre-wrap;">@Text</pre>
+}
+else
+{
+    <div class="markdown-body">@MarkdownRenderer.ToHtml(Text)</div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public string Text { get; set; } = string.Empty;
+
+    // The markdown source as written, instead of rendered.
+    [Parameter]
+    public bool Raw { get; set; }
+}

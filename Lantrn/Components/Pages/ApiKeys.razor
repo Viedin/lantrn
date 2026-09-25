@@ -1,0 +1,182 @@
+@page "/api-keys"
+@rendermode InteractiveServer
+
+@using System.Security.Claims
+@using Lantrn.Api
+@using Lantrn.Services
+
+@inject ApiKeyService Keys
+@inject NavigationManager Navigation
+@inject IJSRuntime JS
+@inject ILogger<ApiKeys> Log
+
+<PageTitle>API keys</PageTitle>
+
+<div class="page-heading">
+    <span class="eyebrow">Admin</span>
+    <h1>API keys</h1>
+    <p class="lead-text">
+        Keys let scripts and integrations manage collections and ingest documents through the
+        <a href="@PublicApi.ReferencePath.TrimStart('/')">public API</a>. A key acts as you, and stops working if you
+        stop being an admin.
+    </p>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <h2 class="section-label mb-3">Create a key</h2>
+
+        <form class="row g-2 align-items-end" @onsubmit="CreateAsync">
+            <div class="col-sm">
+                <label class="form-label" for="key-name">Name</label>
+                <input id="key-name" class="form-control" @bind="name" @bind:event="oninput" maxlength="100"
+                       placeholder="Nightly sync from the wiki" autocomplete="off" />
+            </div>
+            <div class="col-sm-auto">
+                <button type="submit" class="btn btn-primary w-100" disabled="@(busy || string.IsNullOrWhiteSpace(name))">
+                    <i class="bi bi-key" aria-hidden="true"></i> Create key
+                </button>
+            </div>
+        </form>
+
+        @if (createdKey is not null)
+        {
+            <div class="alert alert-success mt-3 mb-0">
+                <p class="mb-2">
+                    Copy <strong>@createdName</strong> now; it won't be shown again. Send it as
+                    <code>Authorization: Bearer &lt;key&gt;</code>.
+                </p>
+                <div class="input-group">
+                    <input class="form-control font-monospace" value="@createdKey" readonly aria-label="API key" />
+                    <button type="button" class="btn btn-outline-secondary" @onclick="CopyKeyAsync">
+                        <i class="bi @(copied ? "bi-check2" : "bi-clipboard")" aria-hidden="true"></i> @(copied ? "Copied" : "Copy")
+                    </button>
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
+<div class="card card-panel">
+    <div class="card-body">
+        <h2 class="section-label mb-3">Your keys</h2>
+        @if (keys.Count == 0)
+        {
+            <p class="mb-0">You have no keys yet.</p>
+        }
+        else
+        {
+            <div class="table-responsive">
+                <table class="table align-middle mb-0">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Key</th>
+                            <th>Created</th>
+                            <th>Last used</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var key in keys)
+                        {
+                            <tr @key="key.Id">
+                                <td class="text-break">@key.Name</td>
+                                <td><code>@(key.Prefix)…</code></td>
+                                <td>@key.CreatedAt.ToLocalTime().ToString("g")</td>
+                                <td>@(key.LastUsedAt?.ToLocalTime().ToString("g") ?? "Never")</td>
+                                <td class="text-end">
+                                    <button class="btn btn-sm btn-outline-danger" disabled="@busy" @onclick="() => revoking = key">
+                                        Revoke
+                                    </button>
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        }
+    </div>
+</div>
+
+<DeleteConfirmModal Show="revoking is not null" Busy="busy" Title="Revoke key?"
+                    OnConfirm="RevokeAsync" OnCancel="() => revoking = null">
+    Anything still using <strong>@revoking?.Name</strong> gets 401 Unauthorized from its next request on.
+</DeleteConfirmModal>
+
+@code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private IReadOnlyList<ApiKeySummary> keys = [];
+    private string userId = string.Empty;
+
+    private string name = string.Empty;
+    private string? createdName;
+    private string? createdKey;
+    private bool copied;
+
+    private ApiKeySummary? revoking;
+    private bool busy;
+    private string? error;
+
+    protected override async Task OnInitializedAsync()
+    {
+        userId = (await AuthenticationState).User.FindFirstValue(ClaimTypes.NameIdentifier)!;
+        keys = await Keys.ListAsync(userId);
+    }
+
+    private Task CreateAsync() => RunAsync(async () =>
+    {
+        createdKey = await Keys.CreateAsync(userId, name);
+        createdName = name.Trim();
+        name = string.Empty;
+        copied = false;
+    }, "Creating an API key");
+
+    private Task RevokeAsync() => RunAsync(async () =>
+    {
+        await Keys.RevokeAsync(userId, revoking!.Id);
+        revoking = null;
+    }, "Revoking an API key");
+
+    private async Task CopyKeyAsync()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", createdKey);
+            copied = true;
+        }
+        catch (JSException)
+        {
+            // Clipboard access needs a secure context; the key can still be selected by hand.
+            error = "Couldn't copy the key. Select it and copy it instead.";
+        }
+    }
+
+    private async Task RunAsync(Func<Task> action, string description)
+    {
+        busy = true;
+        error = null;
+
+        try
+        {
+            await action();
+            keys = await Keys.ListAsync(userId);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "{Description} failed", description);
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+}

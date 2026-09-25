@@ -1,0 +1,209 @@
+@page "/collections"
+@rendermode InteractiveServer
+
+@using Lantrn.Services
+
+@inject DocumentStore Documents
+@inject ILogger<Collections> Log
+
+<PageTitle>Collections</PageTitle>
+
+<div class="page-heading">
+    <span class="eyebrow">Library</span>
+    <h1>Collections</h1>
+    <p class="lead-text">
+        Each collection is its own Qdrant collection with its own documents and tags. Search runs
+        against one collection at a time, so keep unrelated material apart.
+    </p>
+</div>
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <h2 class="section-label mb-3">New collection</h2>
+        <div class="row g-3 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label" for="name">Name</label>
+                <input id="name" class="form-control" @bind="newName" @bind:event="oninput" placeholder="product-docs" />
+            </div>
+            <div class="col-md-6">
+                <label class="form-label" for="description">Description</label>
+                <input id="description" class="form-control" @bind="newDescription" placeholder="Optional" />
+            </div>
+            <div class="col-md-2">
+                <button class="btn btn-primary w-100" @onclick="CreateAsync" disabled="@(busy || string.IsNullOrWhiteSpace(newName))">
+                    Create
+                </button>
+            </div>
+        </div>
+        <div class="form-text">Lowercase letters, digits, '-' and '_'. The name cannot be changed later.</div>
+    </div>
+</div>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+@if (collections is null)
+{
+    <div class="d-flex align-items-center gap-2">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Loading collections…</span>
+    </div>
+}
+else if (collections.Count == 0)
+{
+    <div class="empty-state">
+        <span class="empty-icon" aria-hidden="true"><i class="bi bi-collection"></i></span>
+        <h2>No collections yet</h2>
+        <p>Create one above, then ingest files or crawl a site into it.</p>
+    </div>
+}
+else
+{
+    <div class="card overflow-hidden">
+        <div class="table-responsive">
+            <table class="table table-hover">
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th class="text-end">Documents</th>
+                        <th class="text-end">Chunks</th>
+                        <th>Last ingest</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var collection in collections)
+                    {
+                        <tr>
+                            <td>
+                                <a class="fw-semibold text-body-emphasis text-break" href="collections/@Uri.EscapeDataString(collection.Name)">@collection.Name</a>
+                                @if (collection.Description is not null)
+                                {
+                                    <div class="small">@collection.Description</div>
+                                }
+                            </td>
+                            <td class="text-end">@collection.DocumentCount.ToString("N0")</td>
+                            <td class="text-end">@collection.ChunkCount.ToString("N0")</td>
+                            <td>@(collection.LastIngestedAt?.ToLocalTime().ToString("g") ?? "Never")</td>
+                            <td class="text-end text-nowrap">
+                                <a class="btn btn-sm btn-outline-primary" href="search?collection=@Uri.EscapeDataString(collection.Name)">
+                                    <i class="bi bi-search" aria-hidden="true"></i> Search
+                                </a>
+                                @if (collection.Name == DocumentStore.DefaultCollection)
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingClear = collection"
+                                            title="Clear collection" aria-label="Clear @collection.Name">
+                                        <i class="bi bi-eraser" aria-hidden="true"></i>
+                                    </button>
+                                }
+                                else
+                                {
+                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingDelete = collection"
+                                            title="Delete collection" aria-label="Delete @collection.Name">
+                                        <i class="bi bi-trash" aria-hidden="true"></i>
+                                    </button>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+}
+
+<DeleteConfirmModal Show="@(pendingDelete is not null)" Busy="busy" Title="Delete collection?"
+                     OnConfirm="DeleteAsync" OnCancel="() => pendingDelete = null">
+    Delete <strong>@pendingDelete?.Name</strong> and its @pendingDelete?.DocumentCount.ToString("N0") documents and vectors? This can't be undone.
+</DeleteConfirmModal>
+
+<DeleteConfirmModal Show="@(pendingClear is not null)" Busy="busy" Title="Clear collection?"
+                     OnConfirm="ClearAsync" OnCancel="() => pendingClear = null">
+    Remove all @pendingClear?.DocumentCount.ToString("N0") documents and vectors from <strong>@pendingClear?.Name</strong>?
+    Files in the documents folder are added back on the next sync.
+</DeleteConfirmModal>
+
+@code {
+    private IReadOnlyList<CollectionSummary>? collections;
+    private string newName = string.Empty;
+    private string newDescription = string.Empty;
+    private CollectionSummary? pendingDelete;
+    private CollectionSummary? pendingClear;
+    private string? error;
+    private bool busy;
+
+    protected override async Task OnInitializedAsync()
+    {
+        collections = await Documents.ListCollectionsAsync();
+    }
+
+    private async Task CreateAsync()
+    {
+        busy = true;
+        error = null;
+
+        try
+        {
+            await Documents.CreateCollectionAsync(newName.Trim(), newDescription);
+            newName = string.Empty;
+            newDescription = string.Empty;
+            collections = await Documents.ListCollectionsAsync();
+        }
+        catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        var name = pendingDelete!.Name;
+        busy = true;
+        error = null;
+
+        try
+        {
+            await Documents.DeleteCollectionAsync(name);
+            collections = await Documents.ListCollectionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Deleting collection '{Collection}' failed", name);
+            error = ex.Message;
+        }
+        finally
+        {
+            pendingDelete = null;
+            busy = false;
+        }
+    }
+
+    private async Task ClearAsync()
+    {
+        var name = pendingClear!.Name;
+        busy = true;
+        error = null;
+
+        try
+        {
+            await Documents.ClearCollectionAsync(name);
+            collections = await Documents.ListCollectionsAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Clearing collection '{Collection}' failed", name);
+            error = ex.Message;
+        }
+        finally
+        {
+            pendingClear = null;
+            busy = false;
+        }
+    }
+}

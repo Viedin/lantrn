@@ -1,0 +1,158 @@
+/* The assistant's summary of the top results, above the list. */
+.answer {
+    margin-bottom: 1.5rem;
+    padding: 1rem 1.25rem;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-top: 3px solid var(--bo-accent);
+    border-radius: var(--bs-border-radius-xl);
+    box-shadow: var(--bo-shadow-sm);
+}
+
+.answer-head {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    margin-bottom: 0.6rem;
+}
+
+.answer-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    color: var(--bo-accent-text);
+    font-size: 0.78rem;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+}
+
+.answer-model {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--bo-ink-muted);
+    font-family: var(--bs-font-monospace);
+    font-size: 0.74rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.answer-action {
+    flex: none;
+    padding: 0;
+    color: var(--bo-ink-muted);
+    font-size: 0.8rem;
+    text-decoration: none;
+}
+
+.answer-action:hover {
+    color: var(--bo-accent-text);
+}
+
+.answer-body {
+    max-width: 75ch;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+.answer-body ::deep .cite {
+    margin-left: 0.15rem;
+    top: 0;
+}
+
+.answer-note {
+    margin: 0.5rem 0 0;
+    color: var(--bo-ink-muted);
+    font-size: 0.8rem;
+}
+
+/* A follow-up asked in the panel; the first question is the search itself. */
+.answer-question {
+    display: flex;
+    align-items: baseline;
+    gap: 0.45rem;
+    max-width: 75ch;
+    margin: 1rem 0 0.5rem;
+    padding-top: 0.9rem;
+    border-top: 1px dashed var(--bo-line);
+    color: var(--bo-ink);
+    font-size: 0.92rem;
+    font-weight: 600;
+}
+
+.answer-question .bi {
+    color: var(--bo-accent-text);
+}
+
+.answer-follow-up {
+    display: flex;
+    gap: 0.5rem;
+    max-width: 75ch;
+    margin-top: 0.9rem;
+}
+
+.answer-follow-up .form-control {
+    flex: 1;
+    min-width: 0;
+}
+
+.answer-follow-up .btn {
+    flex: none;
+}
+
+.answer-sources {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: 0.9rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--bo-line);
+}
+
+.answer-sources-label {
+    margin-right: 0.2rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--bo-ink-muted);
+}
+
+.answer-source {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    max-width: 16rem;
+    padding: 0.15rem 0.6rem 0.15rem 0.2rem;
+    cursor: pointer;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: 999px;
+    color: var(--bo-ink);
+    font-size: 0.78rem;
+    transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.answer-source:hover,
+.answer-source.active {
+    border-color: var(--tone, var(--bo-accent));
+    color: var(--bo-ink);
+}
+
+.answer-source.active {
+    background-color: color-mix(in srgb, var(--tone, var(--bo-accent)) 14%, var(--bo-surface));
+}
+
+.answer-source:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.2rem var(--bo-focus-ring);
+}
+
+.answer-source-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

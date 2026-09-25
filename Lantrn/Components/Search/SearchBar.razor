@@ -1,0 +1,56 @@
+<div class="searchbar @(Busy ? "is-busy" : null)">
+    <i class="bi bi-search searchbar-icon" aria-hidden="true"></i>
+
+    <input @ref="Input" class="searchbar-input" @bind:get="Value" @bind:set="value => ValueChanged.InvokeAsync(value)" @bind:event="oninput"
+           @onkeydown="OnKeyDownAsync" placeholder="Ask for a passage by meaning…" aria-label="Query" autofocus />
+
+    @if (!string.IsNullOrEmpty(Value) && !Busy)
+    {
+        <span class="searchbar-hint" aria-hidden="true"><kbd>Enter</kbd></span>
+    }
+
+    @if (!string.IsNullOrEmpty(Value))
+    {
+        <button type="button" class="searchbar-clear" @onclick="OnClear"
+                title="Clear query" aria-label="Clear query">
+            <i class="bi bi-x-lg" aria-hidden="true"></i>
+        </button>
+    }
+
+    <button class="btn btn-primary searchbar-submit" @onclick="OnSubmit"
+            disabled="@(Busy || string.IsNullOrWhiteSpace(Value))">
+        @if (Busy)
+        {
+            <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        }
+        <span>Search</span>
+    </button>
+</div>
+
+@code {
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback OnSubmit { get; set; }
+
+    [Parameter]
+    public EventCallback OnClear { get; set; }
+
+    // The page's keyboard handling moves focus between this and the results.
+    public ElementReference Input { get; private set; }
+
+    private async Task OnKeyDownAsync(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter")
+        {
+            await OnSubmit.InvokeAsync();
+        }
+    }
+}

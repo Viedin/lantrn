@@ -1,0 +1,173 @@
+/* The matched chunk with its neighbours, pinned beside the list. */
+.preview {
+    position: sticky;
+    top: var(--search-pane-top);
+    display: flex;
+    flex-direction: column;
+    max-height: calc(100vh - var(--search-pane-top) - 1.25rem);
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius-xl);
+    box-shadow: var(--bo-shadow-md);
+    overflow: hidden;
+}
+
+.preview-head {
+    flex: none;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.9rem 1rem 0.8rem 1.25rem;
+    border-bottom: 1px solid var(--bo-line);
+}
+
+.preview-id {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.preview-crumb {
+    overflow: hidden;
+    font-size: 0.74rem;
+    color: var(--bo-ink-muted);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.preview-title {
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.preview-actions {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.preview-close {
+    display: none;
+    place-items: center;
+    width: 2rem;
+    height: 2rem;
+    padding: 0;
+    cursor: pointer;
+    background: none;
+    border: none;
+    border-radius: 50%;
+    color: var(--bo-ink-muted);
+}
+
+.preview-close:hover {
+    background-color: var(--bo-surface-sunken);
+    color: var(--bo-ink);
+}
+
+.preview-body {
+    flex: 1;
+    min-height: 0;
+    padding: 1rem 1.25rem 1.25rem;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+}
+
+.preview-skeleton .preview-body {
+    padding-top: 1.25rem;
+}
+
+.preview-image {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius);
+    background: var(--bo-surface-sunken);
+    overflow: hidden;
+}
+
+/* Contain rather than crop: a receipt or a slide is only useful whole. */
+.preview-image img {
+    display: block;
+    max-width: 100%;
+    max-height: 20rem;
+    object-fit: contain;
+}
+
+.passage {
+    position: relative;
+    padding: 0.25rem 0 0.25rem 1rem;
+    border-left: 3px solid transparent;
+}
+
+.passage + .passage {
+    margin-top: 0.75rem;
+}
+
+.passage.is-match {
+    border-left-color: var(--bo-accent);
+}
+
+/* Context is there to be read if wanted, not to compete with the match. */
+.passage.is-context {
+    border-left-color: var(--bo-line);
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
+}
+
+.passage.is-context:hover {
+    opacity: 1;
+}
+
+.passage-heading {
+    display: block;
+    margin-bottom: 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: var(--bo-ink-muted);
+}
+
+.passage ::deep .markdown-body > :last-child {
+    margin-bottom: 0;
+}
+
+/* Too narrow for two panes: the preview becomes a sheet over the list. */
+@media (max-width: 991.98px) {
+    .preview {
+        position: fixed;
+        inset: 0;
+        z-index: 1050;
+        max-height: none;
+        border: none;
+        border-radius: 0;
+        transform: translateY(100%);
+        visibility: hidden;
+        transition: transform 0.2s ease, visibility 0s linear 0.2s;
+    }
+
+    .preview.is-open {
+        transform: none;
+        visibility: visible;
+        transition: transform 0.2s ease;
+    }
+
+    .preview-skeleton {
+        display: none;
+    }
+
+    .preview-close {
+        display: grid;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .preview,
+    .preview.is-open {
+        transition: none;
+    }
+}

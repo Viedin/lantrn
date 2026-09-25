@@ -1,0 +1,234 @@
+@using System.Text.RegularExpressions
+
+@implements IDisposable
+
+@inject SearchAssistant Assistant
+@inject ILogger<AnswerPanel> Log
+
+<section class="answer" aria-label="Answer" aria-busy="@(running ? "true" : "false")">
+    <header class="answer-head">
+        <span class="answer-badge"><i class="bi bi-stars" aria-hidden="true"></i> Answer</span>
+        <span class="answer-model">@model</span>
+        @if (running)
+        {
+            <button type="button" class="btn btn-sm btn-link answer-action" @onclick="Stop">
+                <i class="bi bi-stop-circle" aria-hidden="true"></i> Stop
+            </button>
+        }
+        else
+        {
+            <button type="button" class="btn btn-sm btn-link answer-action" @onclick="Retry" title="Ask the model again">
+                <i class="bi bi-arrow-clockwise" aria-hidden="true"></i> Retry
+            </button>
+        }
+    </header>
+
+    @for (var i = 0; i < turns.Count; i++)
+    {
+        var turn = turns[i];
+        var last = i == turns.Count - 1;
+        var visible = SearchAssistant.VisibleAnswer(turn.Text);
+
+        @* The first question is the search itself, already in the search box. *@
+        @if (i > 0)
+        {
+            <p class="answer-question"><i class="bi bi-chat-left-text" aria-hidden="true"></i> @turn.Question</p>
+        }
+
+        @if (visible.Length > 0)
+        {
+            <div class="answer-body markdown-body" aria-live="@(last ? "polite" : "off")">@ToHtml(visible)</div>
+        }
+        else if (running && last)
+        {
+            <div class="answer-body" aria-hidden="true">
+                <span class="skeleton-line" style="width: 92%;"></span>
+                <span class="skeleton-line" style="width: 78%;"></span>
+                <span class="skeleton-line" style="width: 40%;"></span>
+            </div>
+        }
+
+        @if (turn.Error is not null)
+        {
+            <div class="alert alert-warning small mb-0 mt-2">@turn.Error</div>
+        }
+        else if (turn.Stopped)
+        {
+            <p class="answer-note">Stopped.</p>
+        }
+    }
+
+    @if (CanFollowUp)
+    {
+        <form class="answer-follow-up" @onsubmit="SubmitFollowUp">
+            <input type="text" class="form-control form-control-sm" @bind="followUp" @bind:event="oninput"
+                   placeholder="Ask a follow-up about these sources" aria-label="Follow-up question" maxlength="1000" />
+            <button type="submit" class="btn btn-sm btn-outline-success" disabled="@string.IsNullOrWhiteSpace(followUp)">
+                <i class="bi bi-send" aria-hidden="true"></i> Ask
+            </button>
+        </form>
+    }
+
+    <footer class="answer-sources">
+        <span class="answer-sources-label">Sources</span>
+        @for (var i = 0; i < Sources; i++)
+        {
+            var index = i;
+            <button type="button" class="answer-source tone-@(index % 5) @(index == Selected ? "active" : null)"
+                    @onclick="() => OnSelect.InvokeAsync(index)" title="@SearchFormat.Crumb(Collection, Hits[index])">
+                <span class="cite">@(index + 1)</span>
+                <span class="answer-source-name">@Hits[index].Source</span>
+            </button>
+        }
+    </footer>
+</section>
+
+@code {
+    // Not [GeneratedRegex]: source generators don't see the code Razor generates.
+    private static readonly Regex CitationPattern = new(@"\[(\d+(?:\s*,\s*\d+)*)\]", RegexOptions.Compiled);
+
+    // The query as it was searched, not as the search box reads now.
+    [Parameter, EditorRequired]
+    public string Query { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<SearchHit> Hits { get; set; } = [];
+
+    // How many of the top hits the answer draws on.
+    [Parameter, EditorRequired]
+    public int Sources { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Collection { get; set; } = string.Empty;
+
+    [Parameter]
+    public int Selected { get; set; } = -1;
+
+    [Parameter]
+    public EventCallback<int> OnSelect { get; set; }
+
+    private readonly List<Turn> turns = [];
+    // Loaded with the first answer; follow-ups and retries read the same passages.
+    private IReadOnlyList<AnswerSource>? sources;
+    private string model = string.Empty;
+    private string followUp = string.Empty;
+    private bool running;
+    private CancellationTokenSource? run;
+
+    // The page gives each search a new panel, so it answers once on arrival and the conversation ends with the search.
+    protected override void OnInitialized() => Ask(new Turn(Query));
+
+    // Follow-ups build on the first answer; until there is one, Retry is the way forward.
+    private bool CanFollowUp => !running && Assistant.Enabled && SearchAssistant.VisibleAnswer(turns[0].Text).Length > 0;
+
+    private void SubmitFollowUp()
+    {
+        if (!CanFollowUp || string.IsNullOrWhiteSpace(followUp))
+        {
+            return;
+        }
+
+        // A follow-up that failed or was stopped before showing anything has nothing to carry into the conversation.
+        if (turns.Count > 1 && SearchAssistant.VisibleAnswer(turns[^1].Text).Length == 0)
+        {
+            turns.RemoveAt(turns.Count - 1);
+        }
+
+        Ask(new Turn(followUp.Trim()));
+        followUp = string.Empty;
+    }
+
+    private void Retry()
+    {
+        var turn = turns[^1];
+        turns.RemoveAt(turns.Count - 1);
+        Ask(new Turn(turn.Question));
+    }
+
+    // Runs alongside the page rather than being awaited, so the results stay usable while the answer streams in.
+    private void Ask(Turn turn)
+    {
+        run?.Cancel();
+        run = new CancellationTokenSource();
+
+        var earlier = turns.Select(t => new ChatTurn(t.Question, t.Text)).ToList();
+        turns.Add(turn);
+        model = Assistant.Model;
+
+        // Turning the assistant off means no more document text goes to it, even from a page already open.
+        if (!Assistant.Enabled)
+        {
+            running = false;
+            turn.Error = "The search assistant has been turned off in Settings.";
+            return;
+        }
+
+        running = true;
+        _ = StreamAsync(turn, earlier, run.Token);
+    }
+
+    private async Task StreamAsync(Turn turn, IReadOnlyList<ChatTurn> earlier, CancellationToken cancellation)
+    {
+        try
+        {
+            sources ??= await Assistant.LoadSourcesAsync(Collection, Hits.Take(Sources).ToList(), cancellation);
+            await foreach (var delta in Assistant.AnswerAsync(sources, earlier, turn.Question, cancellation))
+            {
+                turn.Text += delta;
+                StateHasChanged();
+            }
+        }
+        catch (Exception) when (cancellation.IsCancellationRequested)
+        {
+            // Stopped, retried or disposed, which already updated the state; the SDK doesn't always report this as OperationCanceledException.
+            return;
+        }
+        catch (Exception ex)
+        {
+            Log.LogWarning(ex, "Answering {Question} failed", turn.Question);
+            turn.Error = ex.Message;
+        }
+
+        // A reasoning model cut off mid-thought streams nothing that is shown.
+        if (turn.Error is null && SearchAssistant.VisibleAnswer(turn.Text).Length == 0)
+        {
+            turn.Error = "The model returned no answer.";
+        }
+
+        running = false;
+        StateHasChanged();
+    }
+
+    private void Stop()
+    {
+        run?.Cancel();
+        running = false;
+        turns[^1].Stopped = true;
+    }
+
+    // Turns the model's [1] or [1, 2] into markers matching the numbered results. The HTML comes from
+    // Markdig with raw HTML disabled, so the only markup the brackets can sit in is its own.
+    private MarkupString ToHtml(string markdown)
+    {
+        var html = MarkdownRenderer.ToHtml(markdown).Value;
+        return new(CitationPattern.Replace(html, match =>
+        {
+            var numbers = match.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries);
+            if (!numbers.All(n => int.TryParse(n, out var source) && source >= 1 && source <= Sources))
+            {
+                return match.Value;
+            }
+            return string.Concat(numbers.Select(n => $"<sup class=\"cite tone-{(int.Parse(n) - 1) % 5}\">{n}</sup>"));
+        }));
+    }
+
+    public void Dispose() => run?.Cancel();
+
+    private sealed class Turn(string question)
+    {
+        public string Question { get; } = question;
+        public string Text { get; set; } = string.Empty;
+        public string? Error { get; set; }
+        public bool Stopped { get; set; }
+    }
+}

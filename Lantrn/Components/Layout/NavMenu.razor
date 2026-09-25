@@ -1,0 +1,86 @@
+@inject NavigationManager Navigation
+
+<script type="module" src="@Assets["Components/Layout/NavMenu.razor.js"]"></script>
+
+<a class="home-link" href="" title="Back to search">
+    <img src="@Assets["logo.svg"]" alt="" />
+    <span>Lantrn</span>
+</a>
+
+<button type="button" class="menu-toggle"popovertarget="site-menu" aria-label="Menu">
+    <span class="bi bi-list" aria-hidden="true"></span>
+</button>
+
+@* A native popover: it opens above everything, and closes on Esc or a click outside without any script. *@
+<div id="site-menu" class="site-menu" popover>
+    <div class="menu-head">
+        <a class="menu-brand" href="">
+            <img class="auth-brand-mark" src="@Assets["logo.svg"]" alt="" />
+            <span>Lantrn</span>
+        </a>
+        <button type="button" class="menu-close" popovertarget="site-menu" popovertargetaction="hide" aria-label="Close menu">
+            <span class="bi bi-x-lg" aria-hidden="true"></span>
+        </button>
+    </div>
+
+    <nav class="menu-links">
+        <NavLink class="menu-link" href="" Match="NavLinkMatch.All">
+            <span class="bi bi-search" aria-hidden="true"></span> Search
+        </NavLink>
+
+        <AuthorizeView Roles="@Roles.Admin">
+            <div class="menu-section">Workspace</div>
+            <NavLink class="menu-link" href="admin" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill" aria-hidden="true"></span> Dashboard
+            </NavLink>
+            <NavLink class="menu-link" href="collections">
+                <span class="bi bi-collection-fill" aria-hidden="true"></span> Collections
+            </NavLink>
+            <NavLink class="menu-link" href="ingest">
+                <span class="bi bi-file-earmark-arrow-up-fill" aria-hidden="true"></span> Ingest
+            </NavLink>
+            <NavLink class="menu-link" href="crawl">
+                <span class="bi bi-globe2" aria-hidden="true"></span> Crawl
+            </NavLink>
+
+            <div class="menu-section">Admin</div>
+            <NavLink class="menu-link" href="admin/users">
+                <span class="bi bi-people-fill" aria-hidden="true"></span> Users
+            </NavLink>
+            <NavLink class="menu-link" href="settings">
+                <span class="bi bi-gear-fill" aria-hidden="true"></span> Settings
+            </NavLink>
+
+            <div class="menu-section">Developers</div>
+            <NavLink class="menu-link" href="api-keys">
+                <span class="bi bi-key-fill" aria-hidden="true"></span> API keys
+            </NavLink>
+            <NavLink class="menu-link" href="api/reference">
+                <span class="bi bi-braces" aria-hidden="true"></span> API reference
+            </NavLink>
+        </AuthorizeView>
+    </nav>
+
+    <div class="menu-account">
+        <AuthorizeView>
+            <Authorized>
+                <div class="menu-user" title="@context.User.Identity?.Name">
+                    <span class="bi bi-person-circle" aria-hidden="true"></span>
+                    <span>@context.User.Identity?.Name</span>
+                </div>
+                <form action="account/logout" method="post">
+                    <AntiforgeryToken />
+                    <button type="submit" class="btn btn-sm btn-outline-secondary w-100">Sign out</button>
+                </form>
+            </Authorized>
+            <NotAuthorized>
+                <a class="btn btn-sm btn-primary w-100" href="@SignInHref">Sign in</a>
+            </NotAuthorized>
+        </AuthorizeView>
+    </div>
+</div>
+
+@code {
+    private string SignInHref =>
+        $"account/login?returnUrl={Uri.EscapeDataString("/" + Navigation.ToBaseRelativePath(Navigation.Uri))}";
+}

@@ -1,0 +1,20 @@
+@using Lantrn.Services
+
+@* Columns only, so a page can add its own fields to the same row. *@
+<div class="col-sm">
+    <label class="form-label" for="size">Chunk size <InfoTip Text="@HelpText.ChunkSize" /></label>
+    <input id="size" type="number" class="form-control" @bind="Options.MaxCharacters" />
+</div>
+<div class="col-sm">
+    <label class="form-label" for="min-size">Min chunk size <InfoTip Text="@HelpText.MinChunkSize" /></label>
+    <input id="min-size" type="number" class="form-control" @bind="Options.MinCharacters" />
+</div>
+<div class="col-sm">
+    <label class="form-label" for="overlap">Overlap <InfoTip Text="@HelpText.Overlap" /></label>
+    <input id="overlap" type="number" class="form-control" @bind="Options.Overlap" />
+</div>
+
+@code {
+    [Parameter, EditorRequired]
+    public IngestOptions Options { get; set; } = new();
+}

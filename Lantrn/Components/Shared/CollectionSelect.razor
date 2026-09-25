@@ -1,0 +1,42 @@
+@using Lantrn.Services
+
+<label class="form-label" for="@Id">Collection</label>
+@if (Collections.Count == 0)
+{
+    <div class="form-control-plaintext">
+        No collections yet. <a href="collections">Create one</a> first.
+    </div>
+}
+else
+{
+    <select id="@Id" class="form-select" value="@Value" @onchange="OnChangedAsync">
+        @foreach (var collection in Collections)
+        {
+            <option value="@collection.Name">@collection.Name</option>
+        }
+    </select>
+    <div class="form-text"><a href="collections">Manage collections</a></div>
+}
+
+@code {
+    [Parameter, EditorRequired]
+    public string Id { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<CollectionSummary> Collections { get; set; } = [];
+
+    [Parameter]
+    public string Value { get; set; } = string.Empty;
+
+    [Parameter]
+    public EventCallback<string> ValueChanged { get; set; }
+
+    // The requested collection when it exists, else the default one, else whichever comes first.
+    public static string Pick(IReadOnlyList<CollectionSummary> collections, string? requested) =>
+        collections.FirstOrDefault(c => c.Name == requested)?.Name
+            ?? collections.FirstOrDefault(c => c.Name == DocumentStore.DefaultCollection)?.Name
+            ?? collections.FirstOrDefault()?.Name
+            ?? string.Empty;
+
+    private Task OnChangedAsync(ChangeEventArgs e) => ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+}

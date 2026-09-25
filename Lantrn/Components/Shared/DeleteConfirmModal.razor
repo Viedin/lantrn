@@ -1,0 +1,64 @@
+@if (Show)
+{
+    <div class="modal d-block" tabindex="-1" @ref="modalRef" @onclick="Cancel" @onkeydown="OnModalKeyDown">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" role="alertdialog" aria-modal="true" aria-labelledby="confirm-modal-title" @onclick:stopPropagation="true">
+                <div class="modal-header">
+                    <h2 id="confirm-modal-title" class="modal-title fs-5">@Title</h2>
+                </div>
+                <div class="modal-body">@ChildContent</div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" @onclick="Cancel" disabled="@Busy">@CancelText</button>
+                    <button type="button" class="btn btn-danger" @onclick="Confirm" disabled="@Busy">@ConfirmText</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="modal-backdrop show"></div>
+}
+
+@code {
+    [Parameter]
+    public bool Show { get; set; }
+
+    [Parameter]
+    public string Title { get; set; } = "Are you sure?";
+
+    [Parameter]
+    public RenderFragment? ChildContent { get; set; }
+
+    [Parameter]
+    public string ConfirmText { get; set; } = "Delete";
+
+    [Parameter]
+    public string CancelText { get; set; } = "Cancel";
+
+    [Parameter]
+    public bool Busy { get; set; }
+
+    [Parameter]
+    public EventCallback OnConfirm { get; set; }
+
+    [Parameter]
+    public EventCallback OnCancel { get; set; }
+
+    private ElementReference modalRef;
+    private bool wasShown;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (Show && !wasShown)
+        {
+            await modalRef.FocusAsync();
+        }
+
+        wasShown = Show;
+    }
+
+    private Task Confirm() => OnConfirm.InvokeAsync();
+
+    private Task Cancel() => Busy ? Task.CompletedTask : OnCancel.InvokeAsync();
+
+    private Task OnModalKeyDown(KeyboardEventArgs e) =>
+        e.Key == "Escape" ? Cancel() : Task.CompletedTask;
+}

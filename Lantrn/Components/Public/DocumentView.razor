@@ -1,0 +1,217 @@
+@page "/documents/{Id:guid}"
+@rendermode InteractiveServer
+
+@using Lantrn.Infra
+@using Lantrn.Services
+
+@inject DocumentStore Documents
+@inject NavigationManager Navigation
+@inject ILogger<DocumentView> Log
+
+<PageTitle>@(document?.Source ?? "Document")</PageTitle>
+
+@if (loading)
+{
+    <div class="d-flex align-items-center gap-2">
+        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
+        <span>Loading document…</span>
+    </div>
+}
+else if (document is null)
+{
+    <div class="alert alert-warning">
+        This document no longer exists. It may have been removed.
+    </div>
+}
+else
+{
+    <div class="page-heading">
+        <span class="eyebrow">Document</span>
+        <h1 class="text-break">@document.Source</h1>
+        <p class="lead-text d-flex flex-wrap align-items-center gap-2">
+            <AuthorizeView Roles="@Roles.Admin">
+                <Authorized>
+                    <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@Uri.EscapeDataString(document.Collection)">@document.Collection</a>
+                </Authorized>
+                <NotAuthorized>
+                    <span class="metric-pill metric-pill-neutral">@document.Collection</span>
+                </NotAuthorized>
+            </AuthorizeView>
+            <span class="metric-pill metric-pill-neutral">@document.Markdown.Length.ToString("N0") chars</span>
+            <span class="metric-pill metric-pill-neutral">@document.ChunkCount.ToString("N0") chunks</span>
+            @if (document.Kind == DocumentKind.Ocr)
+            {
+                <span class="metric-pill" title="Text read from an image"><i class="bi bi-image" aria-hidden="true"></i> OCR</span>
+            }
+            <span>Ingested @document.IngestedAt.ToLocalTime().ToString("g")</span>
+            @if (Uri.TryCreate(document.Source, UriKind.Absolute, out var url) && url.Scheme is "http" or "https")
+            {
+                <a href="@url" target="_blank" rel="noopener noreferrer">
+                    Open original <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+                </a>
+            }
+            else if (document.OriginalFile is not null)
+            {
+                <a href="@OriginalHref" target="_blank">
+                    Open original <i class="bi bi-box-arrow-up-right" aria-hidden="true"></i>
+                </a>
+            }
+        </p>
+    </div>
+
+    @if (error is not null)
+    {
+        <div class="alert alert-danger">@error</div>
+    }
+
+    @if (isAdmin)
+    {
+        <div class="card mb-3">
+            <div class="card-body d-flex flex-wrap align-items-center gap-2 py-3">
+                <span class="section-label me-1">Tags</span>
+                @if (editingTags)
+                {
+                    <TagInput Tags="TagNames" Busy="busy" OnSave="SaveTagsAsync" OnCancel="() => editingTags = false" />
+                }
+                else
+                {
+                    @if (document.Tags.Count == 0)
+                    {
+                        <span class="small">None</span>
+                    }
+                    @foreach (var tag in TagNames)
+                    {
+                        <span class="metric-pill">@tag</span>
+                    }
+                    <button class="btn btn-sm btn-link" @onclick="() => editingTags = true">Edit</button>
+                }
+
+                <span class="ms-auto">
+                    <button class="btn btn-sm btn-outline-danger" @onclick="() => showDeleteModal = true">
+                        <i class="bi bi-trash" aria-hidden="true"></i> Delete
+                    </button>
+                </span>
+            </div>
+        </div>
+
+        <DeleteConfirmModal Show="showDeleteModal" Busy="busy" Title="Delete document?"
+                             OnConfirm="DeleteAsync" OnCancel="() => showDeleteModal = false">
+            Remove <strong>@document.Source</strong> and its vectors? This can't be undone.
+        </DeleteConfirmModal>
+    }
+    else if (document.Tags.Count > 0)
+    {
+        <p class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            @foreach (var tag in TagNames)
+            {
+                <span class="metric-pill">@tag</span>
+            }
+        </p>
+    }
+
+    @if (document.Kind == DocumentKind.Ocr && document.OriginalFile is not null)
+    {
+        <div class="card card-panel mb-3">
+            <div class="card-body text-center">
+                <a href="@OriginalHref" target="_blank" title="Open the full-size image">
+                    <img class="img-fluid rounded" style="max-height: 32rem;" src="@OriginalHref" alt="Original of @document.Source" />
+                </a>
+            </div>
+        </div>
+    }
+
+    <div class="card card-panel">
+        <div class="card-body">
+            <div class="form-check d-flex justify-content-end mb-3">
+                <input id="raw" type="checkbox" class="form-check-input me-2" @bind="showRaw" />
+                <label class="form-check-label" for="raw">Raw markdown</label>
+            </div>
+
+            <MarkdownView Text="@document.Markdown" Raw="showRaw" />
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter]
+    public Guid Id { get; set; }
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private Document? document;
+    private bool isAdmin;
+    private bool loading = true;
+    private bool showRaw;
+    private bool busy;
+    private string? error;
+    private bool editingTags;
+    private bool showDeleteModal;
+
+    private string OriginalHref => $"documents/{Id}/original";
+
+    private IReadOnlyList<string> TagNames => document!.Tags.Select(t => t.Name).Order().ToList();
+
+    protected override async Task OnParametersSetAsync()
+    {
+        loading = true;
+        isAdmin = await IsAdminAsync();
+        document = await Documents.GetAsync(Id);
+        loading = false;
+    }
+
+    // Tags and delete are only shown to admins, but the circuit would still run a handler it was sent.
+    private async Task<bool> IsAdminAsync() => (await AuthenticationState).User.IsInRole(Roles.Admin);
+
+    private async Task SaveTagsAsync(IReadOnlyList<string> tags)
+    {
+        if (!await IsAdminAsync())
+        {
+            return;
+        }
+
+        busy = true;
+        error = null;
+
+        try
+        {
+            await Documents.SetTagsAsync(Id, tags);
+            document = await Documents.GetAsync(Id);
+            editingTags = false;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Retagging document {DocumentId} failed", Id);
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await IsAdminAsync())
+        {
+            return;
+        }
+
+        busy = true;
+        error = null;
+
+        try
+        {
+            var collection = document!.Collection;
+            await Documents.DeleteAsync(Id);
+            Navigation.NavigateTo($"collections/{Uri.EscapeDataString(collection)}");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Deleting document {DocumentId} failed", Id);
+            error = ex.Message;
+            showDeleteModal = false;
+            busy = false;
+        }
+    }
+}

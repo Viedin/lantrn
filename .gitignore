@@ -1,0 +1,6 @@
+.DS_Store
+
+# Docs (VitePress)
+node_modules/
+Lantrn-docs/.vitepress/cache/
+Lantrn-docs/.vitepress/dist/

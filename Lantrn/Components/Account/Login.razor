@@ -1,0 +1,95 @@
+@page "/account/login"
+
+@using Lantrn.Services
+
+@inject AccountService Accounts
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+
+<PageTitle>Sign in</PageTitle>
+
+<h1>Sign in</h1>
+<p class="auth-lead">Welcome back. Sign in to search the library.</p>
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<EditForm Model="Input" method="post" OnValidSubmit="LoginAsync" FormName="login">
+    <DataAnnotationsValidator />
+
+    <div class="mb-3">
+        <label class="form-label" for="email">Email</label>
+        <InputText id="email" type="email" class="form-control" @bind-Value="Input.Email" autocomplete="username" autofocus />
+        <ValidationMessage For="() => Input.Email" />
+    </div>
+
+    <div class="mb-3">
+        <label class="form-label" for="password">Password</label>
+        <InputText id="password" type="password" class="form-control" @bind-Value="Input.Password" autocomplete="current-password" />
+        <ValidationMessage For="() => Input.Password" />
+    </div>
+
+    <div class="form-check mb-4">
+        <InputCheckbox id="remember" class="form-check-input" @bind-Value="Input.RememberMe" />
+        <label class="form-check-label" for="remember">Keep me signed in</label>
+    </div>
+
+    <button type="submit" class="btn btn-primary w-100">Sign in</button>
+</EditForm>
+
+@if (firstRun)
+{
+    <p class="auth-switch">
+        Setting Lantrn up? <a href="account/register">Create the admin account</a>
+    </p>
+}
+else
+{
+    <p class="auth-switch">Accounts are by invitation.</p>
+}
+
+@code {
+    [SupplyParameterFromForm]
+    private LoginInput Input { get; set; } = null!;
+
+    [SupplyParameterFromQuery(Name = "returnUrl")]
+    private string? Return { get; set; }
+
+    private string? error;
+
+    // No users yet, so the first sign-up (who becomes admin) must be reachable from here.
+    private bool firstRun;
+
+    protected override async Task OnInitializedAsync()
+    {
+        Input ??= new();
+        firstRun = !await Accounts.HasUsersAsync();
+    }
+
+    private async Task LoginAsync()
+    {
+        var result = await SignInManager.PasswordSignInAsync(Input.Email, Input.Password, Input.RememberMe, lockoutOnFailure: true);
+        if (result.Succeeded)
+        {
+            Navigation.NavigateTo(ReturnUrl.Safe(Return), forceLoad: true);
+            return;
+        }
+
+        error = result.IsLockedOut
+            ? "Too many failed attempts. Try again in a few minutes."
+            : "Invalid email or password.";
+    }
+
+    private sealed class LoginInput
+    {
+        [Required, EmailAddress]
+        public string Email { get; set; } = "";
+
+        [Required, DataType(DataType.Password)]
+        public string Password { get; set; } = "";
+
+        public bool RememberMe { get; set; }
+    }
+}

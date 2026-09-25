@@ -1,0 +1,17 @@
+.info-tip {
+    display: inline-flex;
+    margin-left: 0.25rem;
+    color: var(--bo-ink-muted);
+    cursor: help;
+    border-radius: 50%;
+}
+
+.info-tip:hover,
+.info-tip:focus-visible {
+    color: var(--bo-accent-text);
+}
+
+.info-tip:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.2rem var(--bo-focus-ring);
+}

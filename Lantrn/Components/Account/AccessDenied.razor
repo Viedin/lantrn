@@ -1,0 +1,15 @@
+@page "/account/access-denied"
+
+<PageTitle>Access denied</PageTitle>
+
+<h1>Admins only</h1>
+<p class="auth-lead">
+    Your account can search and read documents, but this page is for admins. Ask one if you need access.
+</p>
+
+<a class="btn btn-primary w-100" href="">Go to search</a>
+
+<form action="account/logout" method="post" class="auth-switch">
+    <AntiforgeryToken />
+    <button type="submit" class="btn btn-link p-0">Sign in as someone else</button>
+</form>

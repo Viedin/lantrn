@@ -1,0 +1,50 @@
+@implements IAsyncDisposable
+@inject IJSRuntime JS
+
+<span @ref="icon" class="info-tip" tabindex="0" role="button" aria-label="More information" data-bs-title="@Text">
+    <i class="bi bi-info-circle" aria-hidden="true"></i>
+</span>
+
+@code {
+    [Parameter, EditorRequired] public string Text { get; set; } = string.Empty;
+
+    private ElementReference icon;
+    private IJSObjectReference? module;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        // Bootstrap only wires up tooltips it is told about, and this element did not exist at page load.
+        if (!firstRender)
+        {
+            return;
+        }
+
+        try
+        {
+            module = await JS.InvokeAsync<IJSObjectReference>("import", "./Components/Shared/InfoTip.razor.js");
+            await module.InvokeVoidAsync("init", icon);
+        }
+        catch (JSDisconnectedException)
+        {
+            // Navigated away before the first render finished.
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (module is null)
+        {
+            return;
+        }
+
+        try
+        {
+            await module.InvokeVoidAsync("dispose", icon);
+            await module.DisposeAsync();
+        }
+        catch (JSDisconnectedException)
+        {
+            // The circuit is gone, and the page with it.
+        }
+    }
+}
