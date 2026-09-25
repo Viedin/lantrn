@@ -60,6 +60,13 @@
     transition: border-color 0.15s ease;
 }
 
+/* Windows Chromium paints the open list with the select's own background, which is none here,
+   so it falls back to white under the light dark-theme ink. */
+.option-input option {
+    background-color: var(--bo-surface);
+    color: var(--bo-ink);
+}
+
 .option-input:hover {
     border-bottom-color: var(--bo-ink-muted);
 }
