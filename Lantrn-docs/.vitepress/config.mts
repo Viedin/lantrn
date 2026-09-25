@@ -34,6 +34,10 @@ export default defineConfig({
       }
     ],
 
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/Viedin/lantrn' }
+    ],
+
     search: { provider: 'local' }
   }
 })

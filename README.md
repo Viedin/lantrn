@@ -4,6 +4,8 @@ Lantrn is a self-hosted search app for your documents. Upload files or crawl a w
 
 It's built with Blazor Server, uses [Qdrant](https://qdrant.tech) for vectors and [Xberg](https://www.nuget.org/packages/XbergIo.Xberg) for text extraction, and works with any OpenAI-compatible API (OpenAI, LM Studio, Ollama, vLLM and so on).
 
+**Documentation: [viedin.github.io/lantrn](https://viedin.github.io/lantrn/)**
+
 ## Features
 
 - Hybrid search: embeddings combined with keyword matching
@@ -42,7 +44,7 @@ Migrations are created with `dotnet ef migrations add <Name>` (from `Lantrn/`) a
 
 ## Documentation
 
-The docs live in `Lantrn-docs/` and are built with [VitePress](https://vitepress.dev):
+The docs are published at [viedin.github.io/lantrn](https://viedin.github.io/lantrn/). The source lives in `Lantrn-docs/` and is built with [VitePress](https://vitepress.dev). Pushes to `main` redeploy it automatically. To work on the docs locally:
 
 ```sh
 cd Lantrn-docs
