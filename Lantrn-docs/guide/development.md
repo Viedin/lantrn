@@ -12,6 +12,17 @@ dotnet run
 
 Data goes to `Lantrn/lantrn.db` and `Lantrn/data/`. `appsettings.Development.json` points the models at LM Studio on `localhost:1234`.
 
+To run your changes in Docker, build the image from source instead of pulling the published one:
+
+```sh
+cd Lantrn
+docker compose up -d --build
+```
+
+## Releases
+
+Publishing a GitHub release builds the Docker image for amd64 and arm64 and pushes it to `ghcr.io/viedin/lantrn` (see `.github/workflows/docker.yml`). Tag releases as `v1.2.3`: that publishes `1.2.3`, `1.2` and `latest`. A prerelease only gets its exact tag.
+
 ## Stack
 
 - **Blazor Server** (interactive server rendering)

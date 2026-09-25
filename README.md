@@ -17,12 +17,14 @@ It's built with Blazor Server, uses [Qdrant](https://qdrant.tech) for vectors an
 
 ## Running it
 
-With Docker:
+With Docker, using the published image from `ghcr.io/viedin/lantrn`:
 
 ```sh
-cd Lantrn
+curl -O https://raw.githubusercontent.com/Viedin/lantrn/main/Lantrn/docker-compose.yml
 docker compose up -d
 ```
+
+To build the image from source instead, run `docker compose up -d --build` from the `Lantrn/` folder.
 
 Then open http://localhost:8080. The first account you register becomes the admin. After that, new users need an invite.
 

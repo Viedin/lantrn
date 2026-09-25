@@ -27,7 +27,7 @@ Anything in the documents folder is synced into the default `documents` collecti
 - The folder is checked **once a minute**. Subfolders are included.
 - Files over 100 MB are skipped.
 
-With Docker Compose the folder is `Lantrn/documents/`. Locally it is `data/documents/`.
+With Docker Compose the folder is `documents/`, next to `docker-compose.yml`. Locally it is `data/documents/`.
 
 ## Crawl a website
 

@@ -4,13 +4,19 @@ Lantrn runs as two containers: the app and [Qdrant](https://qdrant.tech), which 
 
 ## 1. Start it
 
-From the `Lantrn/` folder:
+Download the compose file into a new folder and start it:
 
 ```sh
+mkdir lantrn && cd lantrn
+curl -O https://raw.githubusercontent.com/Viedin/lantrn/main/Lantrn/docker-compose.yml
 docker compose up -d
 ```
 
-Open http://localhost:8080.
+This pulls the published image, `ghcr.io/viedin/lantrn`. Open http://localhost:8080.
+
+::: tip Updating
+Run `docker compose pull && docker compose up -d` to move to the latest release. Your data lives in Docker volumes and is kept. To stay on a specific version, change the tag in `docker-compose.yml`, for example `ghcr.io/viedin/lantrn:1.2`.
+:::
 
 ## 2. Create the admin account
 
@@ -36,7 +42,7 @@ A **vision** model (for images) and a **chat** model (for answers) are optional.
 
 ## 4. Add documents
 
-The quickest way: drop files into `Lantrn/documents/` next to `docker-compose.yml`. Lantrn picks them up within a minute.
+The quickest way: drop files into the `documents/` folder next to `docker-compose.yml`. Lantrn picks them up within a minute.
 
 Or upload them on the **Ingest** page. See [Adding documents](./adding-documents) for all the options.
 

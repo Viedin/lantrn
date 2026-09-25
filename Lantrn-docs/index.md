@@ -34,6 +34,7 @@ features:
 ## Up and running in a minute
 
 ```sh
+curl -O https://raw.githubusercontent.com/Viedin/lantrn/main/Lantrn/docker-compose.yml
 docker compose up -d
 ```
 
