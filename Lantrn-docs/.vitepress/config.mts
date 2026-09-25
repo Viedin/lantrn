@@ -2,9 +2,11 @@ import { defineConfig } from 'vitepress'
 
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
+  base: '/lantrn/',
   title: "Lantrn",
   description: "Self-hosted search for your documents",
-  head: [['link', { rel: 'icon', href: '/logo.svg' }]],
+  head: [['link', { rel: 'icon', href: '/lantrn/logo.svg' }]],
+  ignoreDeadLinks: 'localhostLinks',
   themeConfig: {
     // https://vitepress.dev/reference/default-theme-config
     logo: '/logo.svg',
