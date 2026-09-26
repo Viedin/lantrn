@@ -6,12 +6,12 @@ Any OpenAI-compatible server works: OpenAI, LM Studio, Ollama, vLLM and so on.
 
 ## Embeddings
 
-Required. Turns text into vectors for search.
+Required. Turns text into vectors for search. A fresh install has no endpoint set, and the dashboard shows a reminder until one works.
 
 | Field        | Default                       | Notes                                                          |
 | ------------ | ----------------------------- | -------------------------------------------------------------- |
-| Base URL     | `https://api.openai.com/v1`   | Include `/v1`                                                  |
-| Model        | `text-embedding-3-small`      |                                                                |
+| Base URL     | —                             | Include `/v1`                                                  |
+| Model        | —                             | Picked from the models the endpoint lists                      |
 | API key      | —                             |                                                                |
 | Dimensions   | —                             | Only sent if set. Many local models reject it.                 |
 | Batch size   | 32                            | Chunks per request                                             |
@@ -35,8 +35,8 @@ Optional. Reads images (OCR). Needed only if you ingest images.
 
 | Field       | Default          |
 | ----------- | ---------------- |
-| Base URL    | `https://api.openai.com/v1` |
-| Model       | `gpt-4.1-mini`   |
+| Base URL    | —                |
+| Model       | —                |
 | Timeout (s) | 600              |
 
 ## Search assistant
@@ -45,8 +45,8 @@ Optional, **off** by default. A chat model that answers from the search results.
 
 | Field       | Default          | Notes                              |
 | ----------- | ---------------- | ---------------------------------- |
-| Base URL    | `https://api.openai.com/v1` |                         |
-| Model       | `gpt-4.1-mini`   |                                    |
+| Base URL    | —                |                                    |
+| Model       | —                |                                    |
 | Sources     | 6                | How many top results it reads      |
 | Timeout (s) | 120              |                                    |
 

@@ -17,7 +17,11 @@
     <span class="eyebrow">Ingest</span>
     <h1>Crawl a website</h1>
     <p class="lead-text">
-        Follow links and the sitemap from a start URL, keep the pages under one path, and let Xberg strip navigation, headers and footers before chunking and embedding with @Embeddings.Model.
+        Follow links and the sitemap from a start URL, keep the pages under one path, and let Xberg strip navigation, headers and footers before chunking and embedding.
+        @if (!string.IsNullOrEmpty(Embeddings.Model))
+        {
+            <text>Embedded with <code>@Embeddings.Model</code>.</text>
+        }
     </p>
 </div>
 

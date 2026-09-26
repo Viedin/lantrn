@@ -236,6 +236,22 @@ code:not(pre code) {
     color: var(--bo-ink-muted);
 }
 
+.section-label .section-tag {
+    color: var(--bo-accent-text);
+}
+
+/* Keeps a long form's save button in view while scrolling */
+.sticky-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 10;
+    padding: 0.75rem 1rem;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.08);
+}
+
 /* ---------------------------------------------------------------------------
    Cards
    --------------------------------------------------------------------------- */
@@ -505,6 +521,15 @@ code:not(pre code) {
 /* Bootstrap's white tick and switch knob vanish on yellow, so draw them in ink */
 .form-check-input:checked[type=checkbox] {
     --bs-form-check-bg-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23141414' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='m6 10 3 3 6-6'/%3e%3c/svg%3e");
+}
+
+/* Bootstrap's focus state is blue, and a switch keeps focus after being turned off */
+.form-check-input:focus {
+    border-color: var(--bo-accent);
+}
+
+.form-switch .form-check-input:focus:not(:checked) {
+    --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%23fab005'/%3e%3c/svg%3e");
 }
 
 .form-switch .form-check-input:checked {

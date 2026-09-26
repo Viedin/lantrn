@@ -1,9 +1,11 @@
 @page "/admin"
 
+@using Lantrn.Infra
 @using Lantrn.Services
 
 @inject DocumentStore Documents
 @inject EmbeddingService Embeddings
+@inject SettingsStore Store
 
 <PageTitle>Dashboard</PageTitle>
 
@@ -11,9 +13,21 @@
     <span class="eyebrow">Dashboard</span>
     <h1>Your library</h1>
     <p class="lead-text">
-        Everything ingested into Lantrn, embedded with <code>@Embeddings.Model</code> and searchable by meaning.
+        Everything ingested into Lantrn, searchable by meaning.
+        @if (!string.IsNullOrEmpty(Embeddings.Model))
+        {
+            <text>Embedded with <code>@Embeddings.Model</code>.</text>
+        }
     </p>
 </div>
+
+@if (!Store.Current.Embeddings.IsConfigured())
+{
+    <div class="alert alert-info d-flex flex-wrap align-items-center gap-3">
+        <span class="flex-grow-1">Set up an embedding model to start ingesting and searching.</span>
+        <a class="btn btn-sm btn-primary" href="settings">Open settings</a>
+    </div>
+}
 
 <div class="d-flex flex-wrap gap-2 mb-4">
     <a class="btn btn-primary" href="ingest"><i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i> Ingest files</a>

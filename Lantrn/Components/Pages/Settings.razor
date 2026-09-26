@@ -13,7 +13,8 @@
     <span class="eyebrow">Settings</span>
     <h1>Access, models and endpoints</h1>
     <p class="lead-text">
-        Any OpenAI-compatible server works, local or hosted. Changes apply to the next ingest or search.
+        Start with embeddings, everything else is optional. Any OpenAI-compatible server works, local or hosted.
+        Changes apply to the next ingest or search.
     </p>
 </div>
 
@@ -25,6 +26,67 @@
 {
     <div class="alert alert-success">Settings saved.</div>
 }
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <h2 class="section-label mb-3">Embeddings <span class="section-tag">(required)</span></h2>
+        <p class="small">
+            Turns documents and search queries into vectors. Nothing can be ingested or searched until this works.
+            Enter an endpoint and pick a model.
+        </p>
+
+        @if (EmbeddingModelChanged)
+        {
+            <div class="alert alert-warning">
+                Vectors from different models (or dimensions) don't match. Existing collections were embedded
+                with '@Store.Current.Embeddings.Model' and must be re-ingested to be searched with a new model.
+            </div>
+        }
+
+        <div class="row g-3">
+            <EndpointFields Id="embedding" Settings="settings.Embeddings" Preferred="embed" PreferredLabel="Embedding models" />
+        </div>
+
+        <details class="disclosure mt-3">
+            <summary>Advanced</summary>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label" for="embedding-dimensions">Dimensions</label>
+                    <input id="embedding-dimensions" type="number" class="form-control" @bind="settings.Embeddings.Dimensions" @bind:event="oninput" placeholder="Model default" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="embedding-batch">Batch size</label>
+                    <input id="embedding-batch" type="number" class="form-control" @bind="settings.Embeddings.BatchSize" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="embedding-timeout">Timeout (s)</label>
+                    <input id="embedding-timeout" type="number" class="form-control" @bind="settings.Embeddings.TimeoutSeconds" />
+                </div>
+                <div class="col-12">
+                    <label class="form-label" for="embedding-prefix">Query prefix</label>
+                    <textarea id="embedding-prefix" class="form-control" rows="2" @bind="settings.Embeddings.QueryPrefix"></textarea>
+                    <div class="form-text">Prepended to search queries only. Instruction-tuned models such as Qwen3-Embedding expect one.</div>
+                </div>
+            </div>
+        </details>
+    </div>
+</div>
+
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <h2 class="section-label mb-3">Vision <span class="section-tag">(optional)</span></h2>
+        <p class="small">Only needed to ingest images: it transcribes them to text. The model must accept image input.</p>
+
+        <div class="row g-3">
+            @* Endpoints don't say which models take images, so the whole list is offered. *@
+            <EndpointFields Id="vision" Settings="settings.Vision" />
+            <div class="col-md-2">
+                <label class="form-label" for="vision-timeout">Timeout (s)</label>
+                <input id="vision-timeout" type="number" class="form-control" @bind="settings.Vision.TimeoutSeconds" />
+            </div>
+        </div>
+    </div>
+</div>
 
 <div class="card card-panel mb-4">
     <div class="card-body">
@@ -45,57 +107,6 @@
                 <text>Visitors must sign in to search. Accounts are created by <a href="admin/users">invitation</a>.</text>
             }
         </p>
-    </div>
-</div>
-
-<div class="card card-panel mb-4">
-    <div class="card-body">
-        <h2 class="section-label mb-3">Embeddings</h2>
-
-        @if (EmbeddingModelChanged)
-        {
-            <div class="alert alert-warning">
-                Vectors from different models (or dimensions) don't match. Existing collections were embedded
-                with '@Store.Current.Embeddings.Model' and must be re-ingested to be searched with a new model.
-            </div>
-        }
-
-        <div class="row g-3">
-            <EndpointFields Id="embedding" Settings="settings.Embeddings" Preferred="embed" PreferredLabel="Embedding models" />
-            <div class="col-md-2">
-                <label class="form-label" for="embedding-dimensions">Dimensions</label>
-                <input id="embedding-dimensions" type="number" class="form-control" @bind="settings.Embeddings.Dimensions" @bind:event="oninput" placeholder="Model default" />
-            </div>
-            <div class="col-md-2">
-                <label class="form-label" for="embedding-batch">Batch size</label>
-                <input id="embedding-batch" type="number" class="form-control" @bind="settings.Embeddings.BatchSize" />
-            </div>
-            <div class="col-md-2">
-                <label class="form-label" for="embedding-timeout">Timeout (s)</label>
-                <input id="embedding-timeout" type="number" class="form-control" @bind="settings.Embeddings.TimeoutSeconds" />
-            </div>
-            <div class="col-12">
-                <label class="form-label" for="embedding-prefix">Query prefix</label>
-                <textarea id="embedding-prefix" class="form-control" rows="2" @bind="settings.Embeddings.QueryPrefix"></textarea>
-                <div class="form-text">Prepended to search queries only. Instruction-tuned models such as Qwen3-Embedding expect one.</div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<div class="card card-panel mb-4">
-    <div class="card-body">
-        <h2 class="section-label mb-3">Vision</h2>
-        <p class="small">Transcribes uploaded images. The model must accept image input.</p>
-
-        <div class="row g-3">
-            @* Endpoints don't say which models take images, so the whole list is offered. *@
-            <EndpointFields Id="vision" Settings="settings.Vision" />
-            <div class="col-md-2">
-                <label class="form-label" for="vision-timeout">Timeout (s)</label>
-                <input id="vision-timeout" type="number" class="form-control" @bind="settings.Vision.TimeoutSeconds" />
-            </div>
-        </div>
     </div>
 </div>
 
@@ -132,7 +143,7 @@
     </div>
 </div>
 
-<div class="d-flex gap-2">
+<div class="sticky-actions d-flex gap-2">
     <button class="btn btn-primary" @onclick="SaveAsync" disabled="@busy">
         @if (busy)
         {
@@ -152,18 +163,15 @@
         <p>This replaces the saved settings straight away with:</p>
         <ul>
             <li>Public search: @(defaults.Access.PublicSearch ? "on" : "off")</li>
-            <li>Embeddings: <strong>@defaults.Embeddings.Model</strong> at <code>@defaults.Embeddings.BaseUrl</code></li>
-            <li>Vision: <strong>@defaults.Vision.Model</strong> at <code>@defaults.Vision.BaseUrl</code></li>
-            <li>
-                Search assistant: @(defaults.Assistant.Enabled ? "on" : "off"),
-                <strong>@defaults.Assistant.Model</strong> at <code>@defaults.Assistant.BaseUrl</code>
-            </li>
+            <li>Embeddings: @Describe(defaults.Embeddings)</li>
+            <li>Vision: @Describe(defaults.Vision)</li>
+            <li>Search assistant: @(defaults.Assistant.Enabled ? "on" : "off"), @Describe(defaults.Assistant)</li>
         </ul>
         <p class="mb-0">
             API keys and the query prefix are replaced by the defaults too, which usually means they are cleared.
             Unsaved edits on this page are lost.
         </p>
-        @if (defaults.Embeddings.Model != Store.Current.Embeddings.Model || defaults.Embeddings.Dimensions != Store.Current.Embeddings.Dimensions)
+        @if (ChangesEmbeddings(defaults))
         {
             <div class="alert alert-warning mt-3 mb-0">
                 The embedding model changes from '@Store.Current.Embeddings.Model', so existing collections must be re-ingested to be searchable.
@@ -180,15 +188,25 @@
     // Set while the restore confirmation is open, so it can show exactly what will be saved.
     private AppSettings? defaults;
 
-    private bool EmbeddingModelChanged =>
-        settings.Embeddings.Model.Trim() != Store.Current.Embeddings.Model
-        || settings.Embeddings.Dimensions != Store.Current.Embeddings.Dimensions;
+    private bool EmbeddingModelChanged => ChangesEmbeddings(settings);
 
-    // A disabled assistant is never called, so whatever it holds can wait until it is turned on.
+    // Nothing was embedded before a model was first set, so only a switch from one model to another matters.
+    private bool ChangesEmbeddings(AppSettings candidate) =>
+        Store.Current.Embeddings.IsConfigured()
+        && (candidate.Embeddings.Model.Trim() != Store.Current.Embeddings.Model
+            || candidate.Embeddings.Dimensions != Store.Current.Embeddings.Dimensions);
+
+    // Blank endpoints can be saved so the rest of the page can be, but a disabled assistant is skipped and an enabled one is not.
     private IEnumerable<(string Name, IEndpointSettings Endpoint)> Endpoints()
     {
-        yield return ("embeddings", settings.Embeddings);
-        yield return ("vision", settings.Vision);
+        if (!settings.Embeddings.IsBlank())
+        {
+            yield return ("embeddings", settings.Embeddings);
+        }
+        if (!settings.Vision.IsBlank())
+        {
+            yield return ("vision", settings.Vision);
+        }
         if (settings.Assistant.Enabled)
         {
             yield return ("search assistant", settings.Assistant);
@@ -197,6 +215,11 @@
 
     // Edit a copy: the store's instance is live for every circuit until saved.
     protected override void OnInitialized() => settings = Store.Current.Copy();
+
+    private static RenderFragment Describe(IEndpointSettings endpoint) =>
+        endpoint.IsConfigured()
+            ? @<span><strong>@endpoint.Model</strong> at <code>@endpoint.BaseUrl</code></span>
+            : @<span>not set</span>;
 
     private async Task RestoreDefaultsAsync()
     {

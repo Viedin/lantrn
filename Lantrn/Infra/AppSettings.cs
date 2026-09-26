@@ -47,13 +47,23 @@ public interface IEndpointSettings
     int TimeoutSeconds { get; set; }
 }
 
+public static class EndpointSettingsExtensions
+{
+    public static bool IsConfigured(this IEndpointSettings settings) =>
+        !string.IsNullOrWhiteSpace(settings.BaseUrl) && !string.IsNullOrWhiteSpace(settings.Model);
+
+    public static bool IsBlank(this IEndpointSettings settings) =>
+        string.IsNullOrWhiteSpace(settings.BaseUrl) && string.IsNullOrWhiteSpace(settings.Model);
+}
+
+// Endpoints and models start empty: a fresh install sets them on the Settings page or through configuration.
 public sealed class EmbeddingSettings : IEndpointSettings
 {
-    public string BaseUrl { get; set; } = "https://api.openai.com/v1";
+    public string BaseUrl { get; set; } = string.Empty;
 
     public string? ApiKey { get; set; }
 
-    public string Model { get; set; } = "text-embedding-3-small";
+    public string Model { get; set; } = string.Empty;
 
     // Only sent when set; many local models reject the "dimensions" parameter.
     public int? Dimensions { get; set; }
@@ -69,11 +79,11 @@ public sealed class EmbeddingSettings : IEndpointSettings
 
 public sealed class VisionSettings : IEndpointSettings
 {
-    public string BaseUrl { get; set; } = "https://api.openai.com/v1";
+    public string BaseUrl { get; set; } = string.Empty;
 
     public string? ApiKey { get; set; }
 
-    public string Model { get; set; } = "gpt-4.1-mini";
+    public string Model { get; set; } = string.Empty;
 
     public int TimeoutSeconds { get; set; } = 600;
 
@@ -85,11 +95,11 @@ public sealed class AssistantSettings : IEndpointSettings
 {
     public bool Enabled { get; set; }
 
-    public string BaseUrl { get; set; } = "https://api.openai.com/v1";
+    public string BaseUrl { get; set; } = string.Empty;
 
     public string? ApiKey { get; set; }
 
-    public string Model { get; set; } = "gpt-4.1-mini";
+    public string Model { get; set; } = string.Empty;
 
     // How many of the top results the model reads.
     public int MaxSources { get; set; } = 6;

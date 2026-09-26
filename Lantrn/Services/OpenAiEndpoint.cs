@@ -14,6 +14,13 @@ public static class OpenAiEndpoint
     public static OpenAIClientOptions Options(Uri endpoint, TimeSpan timeout) =>
         new() { Endpoint = endpoint, NetworkTimeout = timeout };
 
-    public static OpenAIClientOptions Options(IEndpointSettings settings) =>
-        Options(new Uri(settings.BaseUrl), TimeSpan.FromSeconds(settings.TimeoutSeconds));
+    public static OpenAIClientOptions Options(IEndpointSettings settings)
+    {
+        if (!settings.IsConfigured())
+        {
+            throw new InvalidOperationException("No endpoint or model is set yet. Add them on the Settings page.");
+        }
+
+        return Options(new Uri(settings.BaseUrl), TimeSpan.FromSeconds(settings.TimeoutSeconds));
+    }
 }

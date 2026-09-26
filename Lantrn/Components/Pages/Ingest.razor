@@ -18,7 +18,11 @@
     <span class="eyebrow">Ingest</span>
     <h1>Ingest documents</h1>
     <p class="lead-text">
-        Extract &rarr; markdown &rarr; chunk by section through Xberg, then embed with @Embeddings.Model. Each file is stored in the collection as soon as it is done.
+        Extract &rarr; markdown &rarr; chunk by section through Xberg, then embed. Each file is stored in the collection as soon as it is done.
+        @if (!string.IsNullOrEmpty(Embeddings.Model))
+        {
+            <text>Embedded with <code>@Embeddings.Model</code>.</text>
+        }
     </p>
 </div>
 

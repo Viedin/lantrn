@@ -9,7 +9,7 @@
    A typed key goes straight into Settings, which the caller edits as a copy until it saves. *@
 <div class="col-md-6">
     <label class="form-label" for="@($"{Id}-url")">Endpoint</label>
-    <input id="@($"{Id}-url")" class="form-control" @bind="Settings.BaseUrl" @bind:after="LoadModelsAsync" placeholder="http://localhost:1234/v1" />
+    <input id="@($"{Id}-url")" class="form-control" @bind="Settings.BaseUrl" @bind:after="LoadModelsAsync" placeholder="https://api.openai.com/v1" />
     <div class="form-text">Include the version segment, e.g. /v1.</div>
 </div>
 <div class="col-md-6">
@@ -77,6 +77,14 @@
         // Only the newest request may update the list, so a slow answer for an old endpoint cannot win.
         load?.Cancel();
         var cancellation = load = new CancellationTokenSource();
+
+        if (string.IsNullOrWhiteSpace(Settings.BaseUrl))
+        {
+            models = null;
+            error = null;
+            loading = false;
+            return;
+        }
 
         loading = true;
         error = null;
