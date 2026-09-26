@@ -145,7 +145,7 @@
                         @foreach (var tag in overview.TopTags)
                         {
                             <a class="tag-chip text-decoration-none" title="Search '@tag.Collection' tagged @tag.Name"
-                               href="search?collection=@Uri.EscapeDataString(tag.Collection)&tag=@Uri.EscapeDataString(tag.Name)">
+                               href="./?collection=@Uri.EscapeDataString(tag.Collection)&tag=@Uri.EscapeDataString(tag.Name)">
                                 @tag.Name
                                 @if (overview.Collections.Count > 1)
                                 {

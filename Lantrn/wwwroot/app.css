@@ -1031,7 +1031,7 @@ kbd {
     place-items: center;
     min-height: 100vh;
     padding: 2rem 1rem;
-    background-image: radial-gradient(ellipse at top, var(--bo-surface-sunken) 0%, var(--bo-bg) 60%);
+    background-color: var(--bo-bg);
 }
 
 .auth-card {

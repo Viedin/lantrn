@@ -67,9 +67,12 @@ else
         <button type="submit" class="btn btn-primary w-100">Create account</button>
     </EditForm>
 
-    <p class="auth-switch">
-        Already have an account? <a href="account/login">Sign in</a>
-    </p>
+    @if (mode == Mode.Invited)
+    {
+        <p class="auth-switch">
+            Already have an account? <a href="account/login">Sign in</a>
+        </p>
+    }
 }
 
 @code {

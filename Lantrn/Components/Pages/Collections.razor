@@ -88,7 +88,7 @@ else
                             <td class="text-end">@collection.ChunkCount.ToString("N0")</td>
                             <td>@(collection.LastIngestedAt?.ToLocalTime().ToString("g") ?? "Never")</td>
                             <td class="text-end text-nowrap">
-                                <a class="btn btn-sm btn-outline-primary" href="search?collection=@Uri.EscapeDataString(collection.Name)">
+                                <a class="btn btn-sm btn-outline-primary" href="./?collection=@Uri.EscapeDataString(collection.Name)">
                                     <i class="bi bi-search" aria-hidden="true"></i> Search
                                 </a>
                                 @if (collection.Name == DocumentStore.DefaultCollection)

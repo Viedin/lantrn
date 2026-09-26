@@ -39,16 +39,7 @@
     <button type="submit" class="btn btn-primary w-100">Sign in</button>
 </EditForm>
 
-@if (firstRun)
-{
-    <p class="auth-switch">
-        Setting Lantrn up? <a href="account/register">Create the admin account</a>
-    </p>
-}
-else
-{
-    <p class="auth-switch">Accounts are by invitation.</p>
-}
+<p class="auth-switch">Accounts are by invitation.</p>
 
 @code {
     [SupplyParameterFromForm]
@@ -59,13 +50,15 @@ else
 
     private string? error;
 
-    // No users yet, so the first sign-up (who becomes admin) must be reachable from here.
-    private bool firstRun;
-
     protected override async Task OnInitializedAsync()
     {
         Input ??= new();
-        firstRun = !await Accounts.HasUsersAsync();
+
+        // Nobody can sign in yet; the first account to register becomes the admin.
+        if (!await Accounts.HasUsersAsync())
+        {
+            Navigation.NavigateTo("account/register");
+        }
     }
 
     private async Task LoginAsync()
