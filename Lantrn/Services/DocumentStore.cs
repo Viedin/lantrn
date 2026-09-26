@@ -1,5 +1,7 @@
 using System.Text.RegularExpressions;
 using Lantrn.Infra;
+using Lantrn.Services.Ingestion;
+using Lantrn.Services.Search;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 
@@ -43,7 +45,7 @@ public sealed partial class DocumentStore(
     public async Task EnsureDefaultCollectionAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        if (await db.Collections.AnyAsync(c => c.Name == DefaultCollection, cancellationToken))
+        if (await db.Collections.AsNoTracking().AnyAsync(c => c.Name == DefaultCollection, cancellationToken))
         {
             return;
         }
@@ -57,14 +59,14 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         // Ordered before projecting: EF cannot translate a member of the constructed record.
-        return await SummarizeCollections(db.Collections.OrderBy(c => c.Name))
+        return await SummarizeCollections(db.Collections.AsNoTracking().OrderBy(c => c.Name))
             .ToListAsync(cancellationToken);
     }
 
     public async Task<CollectionSummary?> GetCollectionAsync(string name, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        return await SummarizeCollections(db.Collections.Where(c => c.Name == name))
+        return await SummarizeCollections(db.Collections.AsNoTracking().Where(c => c.Name == name))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -78,7 +80,7 @@ public sealed partial class DocumentStore(
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        if (await db.Collections.AnyAsync(c => c.Name == name, cancellationToken))
+        if (await db.Collections.AsNoTracking().AnyAsync(c => c.Name == name, cancellationToken))
         {
             throw new InvalidOperationException($"A collection named '{name}' already exists.");
         }
@@ -116,6 +118,7 @@ public sealed partial class DocumentStore(
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var originals = await db.Documents
+            .AsNoTracking()
             .Where(d => d.Collection == name && d.OriginalFile != null)
             .Select(d => d.OriginalFile!)
             .ToListAsync(cancellationToken);
@@ -136,6 +139,7 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         return await db.Documents
+            .AsNoTracking()
             .Where(d => d.Collection == DefaultCollection && d.ContentHash != null)
             .Select(d => new FolderDocument(d.Id, d.Source, d.ContentHash!))
             .ToDictionaryAsync(d => d.Source, cancellationToken);
@@ -149,7 +153,7 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
-        var query = db.Documents.Where(d => d.Collection == collection);
+        var query = db.Documents.AsNoTracking().Where(d => d.Collection == collection);
         if (!string.IsNullOrEmpty(tag))
         {
             query = query.Where(d => d.Tags.Any(t => t.Name == tag));
@@ -176,6 +180,7 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         return await db.Documents
+            .AsNoTracking()
             .Where(d => d.Collection == collection)
             .SelectMany(d => d.Tags)
             .GroupBy(t => t.Name)
@@ -191,16 +196,17 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
-        var collections = await SummarizeCollections(db.Collections.OrderBy(c => c.Name))
+        var collections = await SummarizeCollections(db.Collections.AsNoTracking().OrderBy(c => c.Name))
             .ToListAsync(cancellationToken);
 
         var recent = await db.Documents
+            .AsNoTracking()
             .OrderByDescending(d => d.IngestedAt)
             .Take(recentDocuments)
             .Select(d => new RecentDocument(d.Id, d.Collection, d.Source, d.IngestedAt, d.ChunkCount))
             .ToListAsync(cancellationToken);
 
-        var tags = db.Documents.SelectMany(d => d.Tags, (d, t) => new { d.Collection, t.Name });
+        var tags = db.Documents.AsNoTracking().SelectMany(d => d.Tags, (d, t) => new { d.Collection, t.Name });
 
         var distinctTags = await tags.Select(t => t.Name).Distinct().CountAsync(cancellationToken);
 
@@ -227,6 +233,7 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         return await db.Documents
+            .AsNoTracking()
             .Where(d => d.Id == id)
             .Select(d => new DocumentLocation(d.Collection, d.Source))
             .SingleOrDefaultAsync(cancellationToken);
@@ -236,6 +243,7 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var fileName = await db.Documents
+            .AsNoTracking()
             .Where(d => d.Id == id)
             .Select(d => d.OriginalFile)
             .SingleOrDefaultAsync(cancellationToken);

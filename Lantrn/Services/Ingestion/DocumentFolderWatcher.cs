@@ -1,6 +1,6 @@
 using System.Security.Cryptography;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Ingestion;
 
 // Polls the documents folder and keeps the default collection in step with it: new and changed files
 // (by content hash) are embedded, and files that were removed are deleted from the collection.

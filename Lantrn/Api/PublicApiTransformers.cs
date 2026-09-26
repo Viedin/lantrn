@@ -1,4 +1,4 @@
-using Lantrn.Services;
+using Lantrn.Services.Accounts;
 using Microsoft.AspNetCore.OpenApi;
 using Microsoft.OpenApi;
 

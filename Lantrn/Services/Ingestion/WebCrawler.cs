@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using Xberg;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Ingestion;
 
 /// <summary>
 /// Finds the pages under one path on one host through Xberg's bundled crawler, which reads the sitemap,

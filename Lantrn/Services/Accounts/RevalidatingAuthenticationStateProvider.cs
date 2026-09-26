@@ -5,7 +5,7 @@ using Microsoft.AspNetCore.Components.Server;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Accounts;
 
 // A circuit captures the user once. This re-checks the security stamp while it is open, so a deleted user, a changed
 // password or a changed role signs the page out instead of lasting until it is closed.

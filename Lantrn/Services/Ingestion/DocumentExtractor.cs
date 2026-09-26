@@ -3,7 +3,7 @@ using System.Text;
 using Lantrn.Infra;
 using Xberg;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Ingestion;
 
 /// <summary>
 /// Extracts and chunks documents in-process through the Xberg native library.

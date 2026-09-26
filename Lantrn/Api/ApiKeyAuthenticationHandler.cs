@@ -1,6 +1,6 @@
 using System.Text.Encodings.Web;
 using Lantrn.Infra;
-using Lantrn.Services;
+using Lantrn.Services.Accounts;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.Extensions.Options;

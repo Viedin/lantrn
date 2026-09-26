@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Search;
 
 // Turns text into a sparse keyword vector for Qdrant, which weighs each term by its rarity (IDF) on its side.
 // Dense vectors blur exact tokens; this catches names, amounts and codes a query spells out literally.

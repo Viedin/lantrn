@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Accounts;
 
 // Who may search and read documents: anyone signed in, or everyone while public search is on.
 // Read from the settings on every check, so turning it off applies to the next request.

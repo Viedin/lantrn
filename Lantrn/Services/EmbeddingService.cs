@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Lantrn.Infra;
+using Lantrn.Services.Ingestion;
 using OpenAI.Embeddings;
 
 namespace Lantrn.Services;

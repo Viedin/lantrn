@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using Lantrn.Infra;
 using Lantrn.Services;
+using Lantrn.Services.Ingestion;
 
 namespace Lantrn.Api;
 

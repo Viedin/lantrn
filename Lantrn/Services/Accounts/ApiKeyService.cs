@@ -3,7 +3,7 @@ using System.Text;
 using Lantrn.Infra;
 using Microsoft.EntityFrameworkCore;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Accounts;
 
 public sealed record ApiKeySummary(Guid Id, string Name, string Prefix, DateTime CreatedAt, DateTime? LastUsedAt);
 
@@ -20,6 +20,7 @@ public sealed class ApiKeyService(IDbContextFactory<DatabaseContext> dbFactory, 
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         return await db.ApiKeys
+            .AsNoTracking()
             .Where(k => k.UserId == userId)
             .OrderByDescending(k => k.CreatedAt)
             .Select(k => new ApiKeySummary(k.Id, k.Name, k.Prefix, k.CreatedAt, k.LastUsedAt))
@@ -72,6 +73,7 @@ public sealed class ApiKeyService(IDbContextFactory<DatabaseContext> dbFactory, 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var hash = Hash(key);
         var match = await db.ApiKeys
+            .AsNoTracking()
             .Where(k => k.KeyHash == hash)
             .Select(k => new { k.Id, k.UserId })
             .SingleOrDefaultAsync(cancellationToken);

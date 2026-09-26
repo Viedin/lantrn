@@ -2,7 +2,7 @@ using System.Diagnostics;
 using Lantrn.Infra;
 using OpenAI.Chat;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Ingestion;
 
 // Reads images with a vision model rather than Tesseract, which turns photos (receipts, whiteboards) into noise.
 public sealed class VisionOcrService(SettingsStore store, ILogger<VisionOcrService> logger)

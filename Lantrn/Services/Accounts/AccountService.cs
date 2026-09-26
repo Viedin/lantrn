@@ -4,7 +4,7 @@ using Lantrn.Infra;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Accounts;
 
 public sealed record UserSummary(string Id, string Email, bool IsAdmin);
 
@@ -50,14 +50,14 @@ public sealed class AccountService(
     public async Task<bool> HasUsersAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        return await db.Users.AnyAsync(cancellationToken);
+        return await db.Users.AsNoTracking().AnyAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<UserSummary>> ListUsersAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var adminIds = await AdminIds(db).ToListAsync(cancellationToken);
-        var users = await db.Users.OrderBy(u => u.Email).Select(u => new { u.Id, u.Email }).ToListAsync(cancellationToken);
+        var users = await db.Users.AsNoTracking().OrderBy(u => u.Email).Select(u => new { u.Id, u.Email }).ToListAsync(cancellationToken);
         return users.Select(u => new UserSummary(u.Id, u.Email ?? "", adminIds.Contains(u.Id))).ToList();
     }
 
@@ -118,7 +118,7 @@ public sealed class AccountService(
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
         var normalized = email.ToUpperInvariant();
-        if (await db.Users.AnyAsync(u => u.NormalizedEmail == normalized, cancellationToken))
+        if (await db.Users.AsNoTracking().AnyAsync(u => u.NormalizedEmail == normalized, cancellationToken))
         {
             throw new InvalidOperationException($"{email} already has an account.");
         }
@@ -146,6 +146,7 @@ public sealed class AccountService(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         return await db.Invitations
+            .AsNoTracking()
             .OrderByDescending(i => i.CreatedAt)
             .Select(i => new InvitationSummary(i.Id, i.Email, i.InvitedBy, i.CreatedAt, i.ExpiresAt))
             .ToListAsync(cancellationToken);
@@ -169,6 +170,7 @@ public sealed class AccountService(
         var hash = Hash(token);
         var now = DateTime.UtcNow;
         return await db.Invitations
+            .AsNoTracking()
             .Where(i => i.TokenHash == hash && i.ExpiresAt > now)
             .Select(i => i.Email)
             .SingleOrDefaultAsync(cancellationToken);
@@ -184,7 +186,7 @@ public sealed class AccountService(
             var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
             var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
 
-            var first = !await db.Users.AnyAsync();
+            var first = !await db.Users.AsNoTracking().AnyAsync();
             Invitation? invitation = null;
             if (!first)
             {
@@ -226,10 +228,10 @@ public sealed class AccountService(
     }
 
     private static IQueryable<string> AdminIds(DatabaseContext db) =>
-        from userRole in db.UserRoles
-        join role in db.Roles on userRole.RoleId equals role.Id
-        where role.Name == Roles.Admin
-        select userRole.UserId;
+        db.UserRoles
+            .AsNoTracking()
+            .Where(ur => db.Roles.Any(r => r.Id == ur.RoleId && r.Name == Roles.Admin))
+            .Select(ur => ur.UserId);
 
     private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 

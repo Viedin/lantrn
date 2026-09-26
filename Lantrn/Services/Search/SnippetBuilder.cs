@@ -2,7 +2,7 @@ using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Components;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Search;
 
 // A search-engine style excerpt: the window of text holding the most query terms, with each term marked.
 public static class SnippetBuilder

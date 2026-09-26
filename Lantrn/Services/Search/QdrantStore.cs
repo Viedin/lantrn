@@ -1,10 +1,11 @@
 using System.Diagnostics;
 using Google.Protobuf.Collections;
 using Lantrn.Infra;
+using Lantrn.Services.Ingestion;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Search;
 
 /// <summary>
 /// Writes chunks (content + embedding + heading metadata) into a Qdrant collection.

@@ -1,6 +1,6 @@
 using Lantrn.Infra;
 
-namespace Lantrn.Services;
+namespace Lantrn.Services.Ingestion;
 
 // Turns a file or markdown into embedded chunks: the steps shared by the documents folder and the public API.
 // The ingest and crawl pages run the same steps one by one, so they can report each as it happens.

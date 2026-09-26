@@ -1,4 +1,4 @@
-using Lantrn.Services;
+using Lantrn.Services.Search;
 using Microsoft.AspNetCore.Components;
 
 namespace Lantrn.Components.Search;

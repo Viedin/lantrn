@@ -1,6 +1,6 @@
 using System.Text.Json.Serialization;
 using Lantrn.Infra;
-using Lantrn.Services;
+using Lantrn.Services.Accounts;
 using Microsoft.AspNetCore.Authentication;
 
 namespace Lantrn.Api;

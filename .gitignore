@@ -4,3 +4,5 @@
 node_modules/
 Lantrn-docs/.vitepress/cache/
 Lantrn-docs/.vitepress/dist/
+
+.claude/
