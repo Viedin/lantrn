@@ -89,6 +89,17 @@ else
                 }
             </div>
         }
+
+        @if (selected.Count > 0)
+        {
+            <div class="d-flex align-items-center gap-2 ms-auto">
+                <span class="small">@selected.Count.ToString("N0") selected</span>
+                <button class="btn btn-sm btn-link" @onclick="() => selected.Clear()">Clear</button>
+                <button class="btn btn-sm btn-outline-danger" @onclick="() => confirmDeleteSelected = true">
+                    <i class="bi bi-trash" aria-hidden="true"></i> Delete selected
+                </button>
+            </div>
+        }
     </div>
 
     @if (documents.Count == 0)
@@ -114,6 +125,10 @@ else
                 <table class="table table-hover">
                     <thead>
                         <tr>
+                            <th>
+                                <input type="checkbox" class="form-check-input" checked="@AllSelected"
+                                       @onchange="e => SelectAll((bool)e.Value!)" aria-label="Select all shown documents" />
+                            </th>
                             <th>Document</th>
                             <th>Tags</th>
                             <th class="text-end">Chunks</th>
@@ -125,6 +140,10 @@ else
                         @foreach (var document in documents)
                         {
                             <tr>
+                                <td>
+                                    <input type="checkbox" class="form-check-input" checked="@selected.Contains(document.Id)"
+                                           @onchange="e => Select(document.Id, (bool)e.Value!)" aria-label="Select @document.Source" />
+                                </td>
                                 <td>
                                     <a class="fw-semibold text-body-emphasis text-break" href="documents/@document.Id">@document.Source</a>
                                     <div class="small">
@@ -178,6 +197,19 @@ else
         Remove <strong>@pendingDelete?.Source</strong> and its vectors? This can't be undone.
     </DeleteConfirmModal>
 
+    <DeleteConfirmModal Show="confirmDeleteSelected" Busy="busy" Title="@($"Delete {selected.Count:N0} documents?")"
+                         OnConfirm="DeleteSelectedAsync" OnCancel="() => confirmDeleteSelected = false">
+        @if (busy)
+        {
+            <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+            <text>Deleted @deletedCount.ToString("N0") of @selected.Count.ToString("N0")…</text>
+        }
+        else
+        {
+            <text>Remove the @selected.Count.ToString("N0") selected documents and their vectors from <strong>@Name</strong>? This can't be undone.</text>
+        }
+    </DeleteConfirmModal>
+
     <DeleteConfirmModal Show="confirmReembed" Busy="busy" Title="Re-embed collection?" ConfirmText="Re-embed"
                          OnConfirm="ReembedAsync" OnCancel="() => confirmReembed = false">
         <p>
@@ -209,7 +241,13 @@ else
     private bool confirmReembed;
     private bool reembedQueued;
 
+    private readonly HashSet<Guid> selected = [];
+    private bool confirmDeleteSelected;
+    private int deletedCount;
+
     private string EscapedName => Uri.EscapeDataString(Name);
+
+    private bool AllSelected => documents.Count > 0 && documents.All(d => selected.Contains(d.Id));
 
     protected override async Task OnParametersSetAsync()
     {
@@ -227,9 +265,35 @@ else
         loading = false;
     }
 
+    // A selection only ever holds shown documents, so a filter change can't leave hidden ones to be deleted.
     private async Task LoadDocumentsAsync()
     {
         documents = await Documents.ListDocumentsAsync(Name, selectedTag, sourceFilter);
+        selected.IntersectWith(documents.Select(d => d.Id));
+    }
+
+    private void Select(Guid id, bool isSelected)
+    {
+        if (isSelected)
+        {
+            selected.Add(id);
+        }
+        else
+        {
+            selected.Remove(id);
+        }
+    }
+
+    private void SelectAll(bool isSelected)
+    {
+        if (isSelected)
+        {
+            selected.UnionWith(documents.Select(d => d.Id));
+        }
+        else
+        {
+            selected.Clear();
+        }
     }
 
     private async Task LoadTagsAsync()
@@ -268,6 +332,34 @@ else
         var id = pendingDelete!.Id;
         await RunAsync(() => Documents.DeleteAsync(id), "Deleting document {DocumentId} failed", id);
         pendingDelete = null;
+    }
+
+    private async Task DeleteSelectedAsync()
+    {
+        busy = true;
+        error = null;
+        deletedCount = 0;
+
+        try
+        {
+            foreach (var id in selected.ToList())
+            {
+                await Documents.DeleteAsync(id);
+                deletedCount++;
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Deleting the selected documents from '{Collection}' failed", Name);
+            error = $"Deleted {deletedCount:N0} of {selected.Count:N0} documents, then: {ex.Message}";
+        }
+        finally
+        {
+            await ReloadAsync();
+            confirmDeleteSelected = false;
+            busy = false;
+        }
     }
 
     // A collection's vectors all have one size, so they are dropped together and rebuilt from the stored documents.

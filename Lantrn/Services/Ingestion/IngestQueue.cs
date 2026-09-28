@@ -374,7 +374,7 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
         entryPath.Split('/').Any(segment => segment.StartsWith('.') || segment == "__MACOSX");
 
     // A declared size can lie, so the bytes themselves are counted. Returns how many were copied.
-    private static async Task<long> CopyLimitedAsync(Stream source, Stream target, long maxBytes, CancellationToken cancellationToken)
+    internal static async Task<long> CopyLimitedAsync(Stream source, Stream target, long maxBytes, CancellationToken cancellationToken)
     {
         var buffer = new byte[81920];
         long total = 0;

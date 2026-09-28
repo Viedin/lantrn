@@ -28,10 +28,6 @@ Images are read by the **vision model** (not Tesseract), so photos of receipts o
 - **Paste a screenshot** anywhere on the page to add it, just like a chosen file.
 - Files can be at most 100 MB.
 
-## Quick add
-
-The **Dashboard** has a quick add box. Paste a link to add that one web page, or write or paste some text to store it as a note.
-
 ## Documents folder
 
 Anything in the documents folder is kept in sync:
@@ -47,18 +43,13 @@ With Docker Compose the folder is `documents/`, next to `docker-compose.yml`. Lo
 
 ## Crawl a website
 
-**Crawl** page (admins only). Give it a start URL and Lantrn follows the sitemap and links.
+**Crawl** page (admins only). Give it a start URL and Lantrn follows the sitemap and links, keeping only pages under one path such as `/docs`. It honours `robots.txt`, strips navigation and footers, and refuses private or local network addresses.
 
-| Field             | What it does                                                   |
-| ----------------- | -------------------------------------------------------------- |
-| Start URL         | Where the crawl begins. Always counts as one page.             |
-| Only pages under  | Limits the crawl to one path, e.g. `https://example.com/docs/` |
-| Keep in sync      | Never, daily or weekly. See below.                             |
-| Max pages         | The most pages to store. Default 100.                          |
+A re-crawl only re-embeds pages that changed and removes pages that are gone. If it finds less than half the pages it found before, nothing is removed, so a site that is briefly down doesn't empty the collection. Removing a website stops the syncing but keeps its pages.
 
-The crawler honours `robots.txt`, strips navigation and footers, and refuses private or local network addresses.
+### GitHub repositories
 
-Every crawled site is listed under **Websites** on the Crawl page, where you can crawl it again or remove it. A re-crawl only re-embeds pages that changed, and removes pages that are gone from the site. If a crawl finds less than half the pages it found before, nothing is removed, so a site that is briefly down doesn't empty the collection. Removing a website stops the syncing but keeps its pages.
+Give the Crawl page a link to a public GitHub repository, such as `https://github.com/owner/repo` or `.../tree/main/src` for one folder, and Lantrn adds its code, READMEs and markdown docs, one document per file. It is kept in sync like a website. Dependencies, build output and files over 512 KB are skipped, and a repository can hold at most 1000 files; add a larger one a folder at a time.
 
 ## Collections and tags
 
@@ -69,12 +60,4 @@ Every crawled site is listed under **Websites** on the Crawl page, where you can
 
 ## Chunking
 
-The ingest and crawl pages let you tune how documents are split. The defaults work fine for most cases.
-
-| Setting        | Default | What it does                                                                 |
-| -------------- | ------- | ---------------------------------------------------------------------------- |
-| Chunk size     | 2000    | Max characters per chunk. Split at headings first, so most are shorter.      |
-| Min chunk size | 100     | Drop chunks shorter than this (e.g. a lone heading). `0` keeps everything.   |
-| Overlap        | 200     | Characters repeated from the previous chunk, so split sentences are still found. |
-
-Smaller chunks give more precise hits. Larger chunks keep more context together.
+The ingest and crawl pages let you tune how documents are split under **Advanced settings**. The defaults work for most documents. Smaller chunks give more precise hits; larger chunks keep more context together.

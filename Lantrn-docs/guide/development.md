@@ -35,7 +35,9 @@ Publishing a GitHub release builds the Docker image for amd64 and arm64 and push
 
 ```
 Lantrn/
-├── Program.cs        # Startup and DI
+├── Program.cs
+├── Startup/          # DI and auth setup
+├── Api/              # Public REST API
 ├── Components/
 │   ├── Public/       # Search and document view (search access)
 │   ├── Pages/        # Admin pages (admin only)
@@ -50,19 +52,20 @@ Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pa
 
 ## Key services
 
-| Service                 | Does                                                          |
-| ----------------------- | ------------------------------------------------------------- |
-| `DocumentExtractor`     | Files → markdown → chunks                                     |
-| `EmbeddingService`      | Chunks and queries → vectors                                  |
-| `VisionOcrService`      | Images → markdown via the vision model                        |
-| `KeywordEncoder`        | Text → sparse keyword vector (BM25-style)                     |
-| `QdrantStore`           | Writes points, runs hybrid search                             |
-| `DocumentStore`         | Collections, documents, tags. Keeps SQLite and Qdrant in step |
-| `DocumentFolderWatcher` | Syncs the documents folder every minute                       |
-| `WebCrawler`            | Finds and fetches pages for a crawl                           |
-| `SearchAssistant`       | Answers from search results with citations                    |
-| `SettingsStore`         | In-memory copy of the settings row                            |
-| `AccountService`        | Users, roles and invites                                      |
+| Service                       | Does                                                          |
+| ----------------------------- | ------------------------------------------------------------- |
+| `DocumentExtractor`           | Files → markdown → chunks                                     |
+| `EmbeddingService`            | Chunks and queries → vectors                                  |
+| `VisionOcrService`            | Images → markdown via the vision model                        |
+| `KeywordEncoder`              | Text → sparse keyword vector (BM25-style)                     |
+| `QdrantStore`                 | Writes points, runs hybrid search                             |
+| `DocumentStore`               | Collections, documents, tags. Keeps SQLite and Qdrant in step |
+| `IngestQueue`, `IngestWorker` | Background queue that ingests one job at a time               |
+| `SourceSyncService`           | Syncs the documents folder and websites                       |
+| `WebCrawler`                  | Finds and fetches pages for a crawl                           |
+| `SearchAssistant`             | Answers from search results with citations                    |
+| `SettingsStore`               | In-memory copy of the settings row                            |
+| `AccountService`              | Users, roles and invites                                      |
 
 ## How ingest works
 
@@ -71,6 +74,10 @@ Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pa
 3. Embed each chunk and build its keyword vector.
 4. Write the new points to Qdrant, then remove the old ones — a failure halfway leaves the previous version searchable.
 5. Save the markdown, tags and (for PDFs and images) the original file.
+
+## Link extractors
+
+A link on the Crawl page is crawled as a website unless an `ILinkExtractor` in `Services/Ingestion/Links` handles it, like `GitHubExtractor`. To add one, implement the interface and register it in `CoreServices`.
 
 ## Database migrations
 

@@ -2,9 +2,11 @@
 @rendermode InteractiveServer
 
 @using Lantrn.Services
+@using Lantrn.Services.Ingestion.Links
 
 @implements IDisposable
 
+@inject IEnumerable<ILinkExtractor> Extractors
 @inject SourceStore Sources
 @inject SourceSyncService Sync
 @inject EmbeddingService Embeddings
@@ -18,6 +20,7 @@
     <h1>Crawl a website</h1>
     <p class="lead-text">
         Follow links and the sitemap from a start URL, keep the pages under one path, and let Xberg strip navigation, headers and footers before chunking and embedding.
+        A GitHub repository link adds its code, READMEs and docs instead.
         @if (!string.IsNullOrEmpty(Embeddings.Model))
         {
             <text>Embedded with <code>@Embeddings.Model</code>.</text>
@@ -32,10 +35,13 @@
                 <label class="form-label" for="url">Start URL</label>
                 <input id="url" type="url" class="form-control" @bind="startUrl" @bind:after="OnStartUrlChanged" placeholder="https://openrouter.ai/docs/quickstart" />
             </div>
-            <div class="col-md-4">
-                <label class="form-label" for="scope">Only pages under</label>
-                <input id="scope" class="form-control" @bind="scope" placeholder="/docs" />
-            </div>
+            @if (Extractor is null)
+            {
+                <div class="col-md-4">
+                    <label class="form-label" for="scope">Only pages under</label>
+                    <input id="scope" class="form-control" @bind="scope" placeholder="/docs" />
+                </div>
+            }
         </div>
 
         <div class="row g-3 mb-3">
@@ -54,23 +60,26 @@
                     <option value="@Schedule.Daily">Daily</option>
                     <option value="@Schedule.Weekly">Weekly</option>
                 </select>
-                <div class="form-text">Re-crawls on schedule: changed pages are re-embedded, removed ones deleted.</div>
+                <div class="form-text">Re-reads on schedule: changed pages and files are re-embedded, removed ones deleted.</div>
             </div>
         </div>
 
         <details class="disclosure mb-3">
             <summary>Advanced settings</summary>
             <div class="row g-3">
-                <div class="col-sm">
-                    <label class="form-label" for="max-pages">Max pages <InfoTip Text="@HelpText.MaxPages" /></label>
-                    <input id="max-pages" type="number" class="form-control" @bind="maxPages" />
-                </div>
+                @if (Extractor is null)
+                {
+                    <div class="col-sm">
+                        <label class="form-label" for="max-pages">Max pages <InfoTip Text="@HelpText.MaxPages" /></label>
+                        <input id="max-pages" type="number" class="form-control" @bind="maxPages" />
+                    </div>
+                }
                 <ChunkingFields Options="options" />
             </div>
         </details>
 
         <button class="btn btn-primary" @onclick="CrawlAsync" disabled="@(!IsValidUrl || string.IsNullOrEmpty(collection))">
-            Crawl into @(string.IsNullOrEmpty(collection) ? "collection" : $"'{collection}'")
+            @(Extractor is { } extractor ? $"Add {extractor.Label} to" : "Crawl into") @(string.IsNullOrEmpty(collection) ? "collection" : $"'{collection}'")
         </button>
     </div>
 </div>
@@ -174,10 +183,14 @@
     private bool IsValidUrl =>
         Uri.TryCreate(startUrl, UriKind.Absolute, out var url) && url.Scheme is "http" or "https";
 
+    // Null for a website, which is crawled.
+    private ILinkExtractor? Extractor =>
+        IsValidUrl ? Extractors.FirstOrDefault(e => e.CanExtract(new Uri(startUrl))) : null;
+
     // "https://openrouter.ai/docs/quickstart" pre-fills "/docs" unless a prefix was already typed.
     private void OnStartUrlChanged()
     {
-        if (string.IsNullOrWhiteSpace(scope) && Uri.TryCreate(startUrl, UriKind.Absolute, out var url))
+        if (string.IsNullOrWhiteSpace(scope) && Extractor is null && Uri.TryCreate(startUrl, UriKind.Absolute, out var url))
         {
             scope = WebCrawler.DefaultScope(url);
         }
@@ -186,14 +199,15 @@
     // The crawl itself runs in the background, so it carries on when this page is closed.
     private async Task CrawlAsync()
     {
-        error = maxPages <= 0 ? "Max pages must be positive." : options.Validate();
+        var isWebsite = Extractor is null;
+        error = isWebsite && maxPages <= 0 ? "Max pages must be positive." : options.Validate();
         if (!IsValidUrl || string.IsNullOrEmpty(collection) || error is not null)
         {
             return;
         }
 
         var start = new Uri(startUrl);
-        var prefix = string.IsNullOrWhiteSpace(scope) ? WebCrawler.DefaultScope(start) : scope;
+        var prefix = !isWebsite ? null : string.IsNullOrWhiteSpace(scope) ? WebCrawler.DefaultScope(start) : scope;
 
         try
         {
