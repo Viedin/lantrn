@@ -11,15 +11,6 @@ Every search runs two ways at once:
 
 The two rankings are merged, so a result that is strong on only one side can still show up. If the query has no usable keywords (e.g. only punctuation), it searches by meaning only.
 
-## Filters
-
-| Filter     | Options                                  |
-| ---------- | ---------------------------------------- |
-| Collection | Which collection to search               |
-| Type       | All, Documents, or Images (OCR)          |
-| Results    | 5, 10, 20 or 50                          |
-| Tags       | Only results with any of the chosen tags |
-
 ## Search assistant
 
 If the assistant is turned on in [Settings](./configuration#search-assistant), a chat model reads the top results and writes an answer. Each claim cites the result it came from by number, so you can check it. You can ask follow-up questions about the same sources.
