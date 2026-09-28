@@ -2,6 +2,7 @@ using Lantrn.Infra;
 using Lantrn.Services;
 using Lantrn.Services.Accounts;
 using Lantrn.Services.Ingestion;
+using Lantrn.Services.Ingestion.Links;
 using Lantrn.Services.Search;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
@@ -21,6 +22,12 @@ public static class CoreServices
                 client.MaxResponseContentBufferSize = WebCrawler.MaxPageBytes;
             })
             .ConfigurePrimaryHttpMessageHandler(WebCrawler.CreateHandler);
+        services.AddHttpClient<GitHubExtractor>(client =>
+        {
+            client.DefaultRequestHeaders.UserAgent.ParseAdd(WebCrawler.UserAgent);
+            client.Timeout = TimeSpan.FromMinutes(2);
+        });
+        services.AddTransient<ILinkExtractor>(provider => provider.GetRequiredService<GitHubExtractor>());
         services.AddSingleton<SettingsStore>();
         services.AddSingleton<EmbeddingService>();
         services.AddSingleton<VisionOcrService>();
