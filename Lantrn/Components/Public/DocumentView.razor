@@ -1,23 +1,13 @@
 @page "/documents/{Id:guid}"
-@rendermode InteractiveServer
 
 @using Lantrn.Infra
 @using Lantrn.Services
 
 @inject DocumentStore Documents
-@inject NavigationManager Navigation
-@inject ILogger<DocumentView> Log
 
 <PageTitle>@(document?.Source ?? "Document")</PageTitle>
 
-@if (loading)
-{
-    <div class="d-flex align-items-center gap-2">
-        <span class="spinner-border spinner-border-sm" aria-hidden="true"></span>
-        <span>Loading document…</span>
-    </div>
-}
-else if (document is null)
+@if (document is null)
 {
     <div class="alert alert-warning">
         This document no longer exists. It may have been removed.
@@ -59,55 +49,23 @@ else
         </p>
     </div>
 
-    @if (error is not null)
-    {
-        <div class="alert alert-danger">@error</div>
-    }
-
-    @if (isAdmin)
-    {
-        <div class="card mb-3">
-            <div class="card-body d-flex flex-wrap align-items-center gap-2 py-3">
-                <span class="section-label me-1">Tags</span>
-                @if (editingTags)
-                {
-                    <TagInput Tags="TagNames" Busy="busy" OnSave="SaveTagsAsync" OnCancel="() => editingTags = false" />
-                }
-                else
-                {
-                    @if (document.Tags.Count == 0)
-                    {
-                        <span class="small">None</span>
-                    }
+    <AuthorizeView Roles="@Roles.Admin">
+        <Authorized>
+            <DocumentAdminBar @rendermode="InteractiveServer" DocumentId="Id" Source="@document.Source"
+                              Collection="@document.Collection" Tags="TagNames" />
+        </Authorized>
+        <NotAuthorized>
+            @if (TagNames.Count > 0)
+            {
+                <p class="d-flex flex-wrap align-items-center gap-2 mb-3">
                     @foreach (var tag in TagNames)
                     {
                         <span class="metric-pill">@tag</span>
                     }
-                    <button class="btn btn-sm btn-link" @onclick="() => editingTags = true">Edit</button>
-                }
-
-                <span class="ms-auto">
-                    <button class="btn btn-sm btn-outline-danger" @onclick="() => showDeleteModal = true">
-                        <i class="bi bi-trash" aria-hidden="true"></i> Delete
-                    </button>
-                </span>
-            </div>
-        </div>
-
-        <DeleteConfirmModal Show="showDeleteModal" Busy="busy" Title="Delete document?"
-                             OnConfirm="DeleteAsync" OnCancel="() => showDeleteModal = false">
-            Remove <strong>@document.Source</strong> and its vectors? This can't be undone.
-        </DeleteConfirmModal>
-    }
-    else if (document.Tags.Count > 0)
-    {
-        <p class="d-flex flex-wrap align-items-center gap-2 mb-3">
-            @foreach (var tag in TagNames)
-            {
-                <span class="metric-pill">@tag</span>
+                </p>
             }
-        </p>
-    }
+        </NotAuthorized>
+    </AuthorizeView>
 
     @if (document.Kind == DocumentKind.Ocr && document.OriginalFile is not null)
     {
@@ -122,12 +80,14 @@ else
 
     <div class="card card-panel">
         <div class="card-body">
-            <div class="form-check d-flex justify-content-end mb-3">
-                <input id="raw" type="checkbox" class="form-check-input me-2" @bind="showRaw" />
-                <label class="form-check-label" for="raw">Raw markdown</label>
+            <div class="d-flex justify-content-end mb-3">
+                <a class="btn btn-sm btn-outline-secondary" href="@(Raw ? SelfHref : $"{SelfHref}?raw=true")">
+                    <i class="bi @(Raw ? "bi-file-richtext" : "bi-code-slash")" aria-hidden="true"></i>
+                    @(Raw ? "Rendered" : "Raw markdown")
+                </a>
             </div>
 
-            <MarkdownView Text="@document.Markdown" Raw="showRaw" />
+            <MarkdownView Text="@document.Markdown" Raw="Raw" />
         </div>
     </div>
 }
@@ -136,82 +96,19 @@ else
     [Parameter]
     public Guid Id { get; set; }
 
-    [CascadingParameter]
-    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+    [SupplyParameterFromQuery(Name = "raw")]
+    public bool Raw { get; set; }
 
     private Document? document;
-    private bool isAdmin;
-    private bool loading = true;
-    private bool showRaw;
-    private bool busy;
-    private string? error;
-    private bool editingTags;
-    private bool showDeleteModal;
 
-    private string OriginalHref => $"documents/{Id}/original";
+    private string SelfHref => $"documents/{Id}";
+
+    private string OriginalHref => $"{SelfHref}/original";
 
     private IReadOnlyList<string> TagNames => document!.Tags.Select(t => t.Name).Order().ToList();
 
     protected override async Task OnParametersSetAsync()
     {
-        loading = true;
-        isAdmin = await IsAdminAsync();
         document = await Documents.GetAsync(Id);
-        loading = false;
-    }
-
-    // Tags and delete are only shown to admins, but the circuit would still run a handler it was sent.
-    private async Task<bool> IsAdminAsync() => (await AuthenticationState).User.IsInRole(Roles.Admin);
-
-    private async Task SaveTagsAsync(IReadOnlyList<string> tags)
-    {
-        if (!await IsAdminAsync())
-        {
-            return;
-        }
-
-        busy = true;
-        error = null;
-
-        try
-        {
-            await Documents.SetTagsAsync(Id, tags);
-            document = await Documents.GetAsync(Id);
-            editingTags = false;
-        }
-        catch (Exception ex)
-        {
-            Log.LogError(ex, "Retagging document {DocumentId} failed", Id);
-            error = ex.Message;
-        }
-        finally
-        {
-            busy = false;
-        }
-    }
-
-    private async Task DeleteAsync()
-    {
-        if (!await IsAdminAsync())
-        {
-            return;
-        }
-
-        busy = true;
-        error = null;
-
-        try
-        {
-            var collection = document!.Collection;
-            await Documents.DeleteAsync(Id);
-            Navigation.NavigateTo($"collections/{Uri.EscapeDataString(collection)}");
-        }
-        catch (Exception ex)
-        {
-            Log.LogError(ex, "Deleting document {DocumentId} failed", Id);
-            error = ex.Message;
-            showDeleteModal = false;
-            busy = false;
-        }
     }
 }

@@ -1,0 +1,120 @@
+@inject DocumentStore Documents
+@inject NavigationManager Navigation
+@inject ILogger<DocumentAdminBar> Log
+
+@if (error is not null)
+{
+    <div class="alert alert-danger">@error</div>
+}
+
+<div class="card mb-3">
+    <div class="card-body d-flex flex-wrap align-items-center gap-2 py-3">
+        <span class="section-label me-1">Tags</span>
+        @if (editingTags)
+        {
+            <TagInput Tags="tags" Busy="busy" OnSave="SaveTagsAsync" OnCancel="() => editingTags = false" />
+        }
+        else
+        {
+            @if (tags.Count == 0)
+            {
+                <span class="small">None</span>
+            }
+            @foreach (var tag in tags)
+            {
+                <span class="metric-pill">@tag</span>
+            }
+            <button class="btn btn-sm btn-link" @onclick="() => editingTags = true">Edit</button>
+        }
+
+        <span class="ms-auto">
+            <button class="btn btn-sm btn-outline-danger" @onclick="() => showDeleteModal = true">
+                <i class="bi bi-trash" aria-hidden="true"></i> Delete
+            </button>
+        </span>
+    </div>
+</div>
+
+<DeleteConfirmModal Show="showDeleteModal" Busy="busy" Title="Delete document?"
+                     OnConfirm="DeleteAsync" OnCancel="() => showDeleteModal = false">
+    Remove <strong>@Source</strong> and its vectors? This can't be undone.
+</DeleteConfirmModal>
+
+@code {
+    [Parameter, EditorRequired]
+    public Guid DocumentId { get; set; }
+
+    [Parameter, EditorRequired]
+    public string Source { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public string Collection { get; set; } = string.Empty;
+
+    [Parameter, EditorRequired]
+    public IReadOnlyList<string> Tags { get; set; } = [];
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private IReadOnlyList<string> tags = [];
+    private bool busy;
+    private string? error;
+    private bool editingTags;
+    private bool showDeleteModal;
+
+    protected override void OnInitialized() => tags = Tags;
+
+    // Only rendered for admins, but the circuit would still run a handler after the role was taken away.
+    private async Task<bool> IsAdminAsync() => (await AuthenticationState).User.IsInRole(Roles.Admin);
+
+    private async Task SaveTagsAsync(IReadOnlyList<string> newTags)
+    {
+        if (!await IsAdminAsync())
+        {
+            return;
+        }
+
+        busy = true;
+        error = null;
+
+        try
+        {
+            await Documents.SetTagsAsync(DocumentId, newTags);
+            tags = newTags.Order().ToList();
+            editingTags = false;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Retagging document {DocumentId} failed", DocumentId);
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private async Task DeleteAsync()
+    {
+        if (!await IsAdminAsync())
+        {
+            return;
+        }
+
+        busy = true;
+        error = null;
+
+        try
+        {
+            await Documents.DeleteAsync(DocumentId);
+            Navigation.NavigateTo($"collections/{Uri.EscapeDataString(Collection)}");
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Deleting document {DocumentId} failed", DocumentId);
+            error = ex.Message;
+            showDeleteModal = false;
+            busy = false;
+        }
+    }
+}
