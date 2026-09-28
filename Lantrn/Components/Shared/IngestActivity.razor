@@ -1,0 +1,38 @@
+@implements IDisposable
+
+@inject IngestQueue Queue
+
+@* The ingest queue as it runs. It keeps working when the page is closed, so this is only a view of it. *@
+@if (jobs.Count > 0)
+{
+    <IngestProgress Tally="Queue.Tally" Busy="busy" OnStop="Queue.StopAll" />
+    <IngestResults Jobs="jobs" />
+}
+
+@code {
+    private IReadOnlyList<IngestJob> jobs = [];
+    private bool busy;
+
+    protected override void OnInitialized() => Queue.Changed += OnQueueChanged;
+
+    protected override void OnParametersSet() => Snapshot();
+
+    private void Snapshot()
+    {
+        jobs = Queue.Recent;
+        busy = Queue.IsBusy;
+    }
+
+    private void OnQueueChanged() => _ = InvokeAsync(() =>
+    {
+        Snapshot();
+        StateHasChanged();
+    });
+
+    // Leaving or reloading the page clears a finished run, so the next ingest starts with an empty list.
+    public void Dispose()
+    {
+        Queue.Changed -= OnQueueChanged;
+        Queue.ClearIfIdle();
+    }
+}

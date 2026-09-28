@@ -19,6 +19,22 @@ public sealed class DocumentExtractor(ILogger<DocumentExtractor> logger)
             [".txt"] = "text/plain",
             [".html"] = "text/html",
             [".htm"] = "text/html",
+            [".docx"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+            [".pptx"] = "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+            [".xlsx"] = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            [".xls"] = "application/vnd.ms-excel",
+            [".odt"] = "application/vnd.oasis.opendocument.text",
+            [".ods"] = "application/vnd.oasis.opendocument.spreadsheet",
+            [".rtf"] = "application/rtf",
+            [".epub"] = "application/epub+zip",
+            [".eml"] = "message/rfc822",
+            [".msg"] = "application/vnd.ms-outlook",
+            [".csv"] = "text/csv",
+            [".tsv"] = "text/tab-separated-values",
+            [".json"] = "application/json",
+            [".xml"] = "application/xml",
+            [".yaml"] = "application/yaml",
+            [".yml"] = "application/yaml",
             [".png"] = "image/png",
             [".jpg"] = "image/jpeg",
             [".jpeg"] = "image/jpeg",
@@ -26,10 +42,15 @@ public sealed class DocumentExtractor(ILogger<DocumentExtractor> logger)
             [".webp"] = "image/webp",
         };
 
-    public static string AcceptAttribute { get; } = string.Join(",", SupportedTypes.Keys.Concat(SupportedTypes.Values.Distinct()));
+    // Uploads also take ZIP archives, which IngestQueue unpacks into one document per supported file.
+    public static string AcceptAttribute { get; } =
+        string.Join(",", SupportedTypes.Keys.Concat(SupportedTypes.Values.Distinct()).Append(".zip"));
 
     public static bool TryGetContentType(string fileName, out string contentType) =>
         SupportedTypes.TryGetValue(Path.GetExtension(fileName), out contentType!);
+
+    public static bool IsArchive(string fileName) =>
+        Path.GetExtension(fileName).Equals(".zip", StringComparison.OrdinalIgnoreCase);
 
     // Images carry no text layer; VisionOcrService reads them and ChunkMarkdownAsync chunks the result.
     public static bool IsImage(string fileName) =>
@@ -197,6 +218,8 @@ public sealed class IngestOptions
     public int MaxCharacters { get; set; } = 2000;
     public int MinCharacters { get; set; } = 100;
     public int Overlap { get; set; } = 200;
+
+    public IngestOptions Clone() => (IngestOptions)MemberwiseClone();
 
     public string? Validate() =>
         MaxCharacters <= 0 ? "Chunk size must be positive."

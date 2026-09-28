@@ -36,6 +36,8 @@
     <a class="btn btn-outline-primary" href="collections"><i class="bi bi-collection" aria-hidden="true"></i> Collections</a>
 </div>
 
+<QuickAdd @rendermode="InteractiveServer" />
+
 @if (overview is not null)
 {
     <div class="row g-3 mb-4 stat-row">
@@ -67,7 +69,7 @@
             <div class="card h-100">
                 <div class="card-body d-flex flex-column gap-1">
                     <span class="section-label">Last ingest</span>
-                    <span class="fs-3 fw-bold lh-sm text-body-emphasis" title="@overview.LastIngestedAt?.ToLocalTime().ToString("g")">@Ago(overview.LastIngestedAt)</span>
+                    <span class="fs-3 fw-bold lh-sm text-body-emphasis" title="@overview.LastIngestedAt?.ToLocalTime().ToString("g")">@TimeText.Ago(overview.LastIngestedAt)</span>
                 </div>
             </div>
         </div>
@@ -75,10 +77,39 @@
 
     @if (overview.DocumentCount == 0)
     {
-        <div class="empty-state">
-            <span class="empty-icon" aria-hidden="true"><i class="bi bi-inbox"></i></span>
-            <h2>Nothing ingested yet</h2>
-            <p>Upload some files or crawl a documentation site, and they will show up here once they are stored.</p>
+        <h2 class="section-label mb-3">Where does your data live?</h2>
+        <div class="row g-3">
+            <div class="col-sm-6 col-xl-3">
+                <a class="start-card" href="ingest">
+                    <i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i>
+                    <h3>On your computer</h3>
+                    <p>Upload PDFs, Office files, e-mails, images or a whole ZIP. You can paste screenshots too.</p>
+                </a>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <div class="start-card">
+                    <i class="bi bi-folder2-open" aria-hidden="true"></i>
+                    <h3>In a folder</h3>
+                    <p>
+                        Anything in <code class="text-break">@Documents.FolderPath</code> is kept in sync; each folder in it becomes a collection.
+                        With Docker Compose, that's the <code>documents</code> folder next to <code>docker-compose.yml</code>.
+                    </p>
+                </div>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <a class="start-card" href="crawl">
+                    <i class="bi bi-globe2" aria-hidden="true"></i>
+                    <h3>On a website</h3>
+                    <p>Crawl a documentation site or wiki, and re-crawl it daily or weekly to keep up with changes.</p>
+                </a>
+            </div>
+            <div class="col-sm-6 col-xl-3">
+                <a class="start-card" href="api-keys">
+                    <i class="bi bi-code-slash" aria-hidden="true"></i>
+                    <h3>In another tool</h3>
+                    <p>Push documents from scripts and automations through the API with an API key.</p>
+                </a>
+            </div>
         </div>
     }
     else
@@ -106,7 +137,7 @@
                                             <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@Uri.EscapeDataString(document.Collection)">@document.Collection</a>
                                         </td>
                                         <td class="text-end">@document.ChunkCount.ToString("N0")</td>
-                                        <td class="text-end text-nowrap" title="@document.IngestedAt.ToLocalTime().ToString("g")">@Ago(document.IngestedAt)</td>
+                                        <td class="text-end text-nowrap" title="@document.IngestedAt.ToLocalTime().ToString("g")">@TimeText.Ago(document.IngestedAt)</td>
                                     </tr>
                                 }
                             </tbody>
@@ -172,19 +203,4 @@
     // Integer so the style attribute never picks up a culture's decimal comma.
     private int Share(int chunks) =>
         overview!.ChunkCount == 0 ? 0 : Math.Max(chunks > 0 ? 1 : 0, chunks * 100 / overview.ChunkCount);
-
-    private static string Ago(DateTime? utc)
-    {
-        if (utc is not { } value)
-        {
-            return "Never";
-        }
-
-        var elapsed = DateTime.UtcNow - value;
-        return elapsed.TotalMinutes < 1 ? "Just now"
-            : elapsed.TotalHours < 1 ? $"{(int)elapsed.TotalMinutes} min ago"
-            : elapsed.TotalDays < 1 ? $"{(int)elapsed.TotalHours} h ago"
-            : elapsed.TotalDays < 30 ? $"{(int)elapsed.TotalDays} d ago"
-            : value.ToLocalTime().ToString("d");
-    }
 }

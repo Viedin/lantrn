@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Lantrn.Infra;
 using Lantrn.Services.Ingestion;
@@ -23,7 +24,7 @@ public sealed partial class DocumentStore(
     private readonly string originalsPath = Path.Combine(
         Path.GetFullPath(storage.Value.DataPath, environment.ContentRootPath), "originals");
 
-    // Files placed here are kept in sync with the default collection by DocumentFolderWatcher.
+    // Files placed here are kept in sync by SourceSyncService: top-level folders become collections, the rest goes to the default one.
     public string FolderPath { get; } = Path.Combine(
         Path.GetFullPath(storage.Value.DataPath, environment.ContentRootPath), "documents");
 
@@ -32,6 +33,8 @@ public sealed partial class DocumentStore(
     private static partial Regex CollectionNamePattern();
 
     public static bool IsValidCollectionName(string name) => CollectionNamePattern().IsMatch(name);
+
+    public static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
 
     // "CS-Docs, drafts ,cs-docs" -> ["cs-docs", "drafts"]
     public static IReadOnlyList<string> ParseTags(string? input) =>
@@ -134,15 +137,19 @@ public sealed partial class DocumentStore(
         logger.LogInformation("Cleared the documents of collection '{Collection}'", name);
     }
 
-    // The documents synced from the folder, by source, with the hash of the file they were embedded from.
-    public async Task<Dictionary<string, FolderDocument>> ListFolderDocumentsAsync(CancellationToken cancellationToken = default)
+    // Keeps the documents so they can be embedded again, such as with another model.
+    public Task DeleteVectorsAsync(string collection, CancellationToken cancellationToken = default) =>
+        qdrant.DeleteCollectionAsync(collection, cancellationToken);
+
+    // The documents a folder or website brought in, with the hash of what they were embedded from.
+    public async Task<IReadOnlyList<SyncedDocument>> ListSourceDocumentsAsync(Guid sourceId, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         return await db.Documents
             .AsNoTracking()
-            .Where(d => d.Collection == DefaultCollection && d.ContentHash != null)
-            .Select(d => new FolderDocument(d.Id, d.Source, d.ContentHash!))
-            .ToDictionaryAsync(d => d.Source, cancellationToken);
+            .Where(d => d.SourceId == sourceId)
+            .Select(d => new SyncedDocument(d.Id, d.Collection, d.Source, d.ContentHash))
+            .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<DocumentSummary>> ListDocumentsAsync(
@@ -267,9 +274,21 @@ public sealed partial class DocumentStore(
         IReadOnlyList<string> tags,
         byte[]? original = null,
         string? contentHash = null,
+        Guid? sourceId = null,
         CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+        // Queued jobs can outlive their collection or source. Checked before Qdrant is touched,
+        // since the save below would fail only after the points were written.
+        if (!await db.Collections.AsNoTracking().AnyAsync(c => c.Name == collection, cancellationToken))
+        {
+            throw new InvalidOperationException($"The collection '{collection}' no longer exists.");
+        }
+        if (sourceId is { } id && !await db.Sources.AsNoTracking().AnyAsync(s => s.Id == id, cancellationToken))
+        {
+            throw new InvalidOperationException("The folder or website this came from is no longer synced.");
+        }
 
         var document = await db.Documents
             .Include(d => d.Tags)
@@ -284,6 +303,7 @@ public sealed partial class DocumentStore(
         document.Markdown = result.Markdown;
         document.Kind = result.Kind;
         document.ContentHash = contentHash;
+        document.SourceId = sourceId;
         document.ChunkCount = await qdrant.ReplaceDocumentAsync(
             collection, source, document.Id, result.Kind, result.Chunks, tags, cancellationToken);
         document.IngestedAt = DateTime.UtcNow;
@@ -423,7 +443,7 @@ public sealed record StoredOriginal(string Path, string ContentType);
 
 public sealed record StoredDocument(Guid Id, int ChunkCount);
 
-public sealed record FolderDocument(Guid Id, string Source, string ContentHash);
+public sealed record SyncedDocument(Guid Id, string Collection, string Source, string? ContentHash);
 
 public sealed class StorageOptions
 {

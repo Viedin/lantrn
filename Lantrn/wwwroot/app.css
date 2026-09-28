@@ -869,6 +869,70 @@ details.disclosure[open] > summary {
     color: var(--bo-ink-muted);
 }
 
+/* The file input covers the whole zone, invisible, so a drop anywhere on it lands in the input */
+.drop-zone {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 2rem 1rem;
+    text-align: center;
+    background-color: var(--bo-surface-sunken);
+    border: 1.5px dashed var(--bo-line);
+    border-radius: var(--bs-border-radius-lg);
+    transition: border-color 0.15s, background-color 0.15s;
+}
+
+.drop-zone:hover,
+.drop-zone:focus-within,
+.drop-zone.dragging {
+    border-color: var(--bo-accent);
+    background-color: color-mix(in srgb, var(--bo-accent) 8%, var(--bo-surface));
+}
+
+.drop-zone-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+/* Where-to-start cards on an empty dashboard */
+.start-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    height: 100%;
+    padding: 1.25rem;
+    color: inherit;
+    text-decoration: none;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius-lg);
+    transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+a.start-card:hover {
+    border-color: var(--bo-accent);
+    box-shadow: var(--bo-shadow-md);
+}
+
+.start-card .bi {
+    font-size: 1.4rem;
+    color: var(--bo-accent-text);
+}
+
+.start-card h3 {
+    margin: 0;
+    font-size: 1rem;
+}
+
+.start-card p {
+    margin: 0;
+    font-size: 0.875rem;
+}
+
 .btn-sm {
     --bs-btn-padding-y: 0.25rem;
     --bs-btn-padding-x: 0.6rem;
