@@ -1,33 +1,45 @@
 @using Lantrn.Services
 
-@* What each file or page of an ingest or crawl turned into, chunk by chunk. *@
-@if (Entries.Count > 0)
+@* What each queued file or page turned into, chunk by chunk. *@
+@if (Jobs.Count > 0)
 {
     <div class="form-check d-flex justify-content-end gap-2 mb-2">
         <input id="raw" type="checkbox" class="form-check-input" @bind="showRaw" />
         <label class="form-check-label" for="raw">Raw markdown</label>
     </div>
 
-    @foreach (var entry in Entries)
+    @foreach (var job in Jobs)
     {
-        <details class="disclosure mb-3" open="@(Entries.Count == 1)">
-            <summary>
-                @entry.Name
-                @if (entry.Result is { } ingested)
+        <details class="disclosure mb-3" @key="job.Id" open="@expanded.Contains(job.Id)">
+            <summary @onclick="() => Toggle(job.Id)">
+                @job.Request.Source
+                <span class="metric-pill metric-pill-neutral ms-2">@job.Request.Collection</span>
+                @switch (job.Status)
                 {
-                    <span class="metric-pill metric-pill-neutral ms-2">@ingested.Chunks.Count chunks</span>
-                }
-                else if (entry.Error is not null)
-                {
-                    <span class="text-danger ms-2">failed</span>
+                    case IngestJobStatus.Queued:
+                        <span class="small ms-2">queued</span>
+                        break;
+                    case IngestJobStatus.Running:
+                        <span class="spinner-border spinner-border-sm ms-2" aria-label="Running"></span>
+                        break;
+                    case IngestJobStatus.Done:
+                        <span class="metric-pill ms-2">@(job.Result?.Chunks.Count ?? 0) chunks</span>
+                        <a class="small ms-2" href="documents/@job.DocumentId">Open</a>
+                        break;
+                    case IngestJobStatus.Failed:
+                        <span class="text-danger ms-2">failed</span>
+                        break;
+                    case IngestJobStatus.Cancelled:
+                        <span class="small ms-2">stopped</span>
+                        break;
                 }
             </summary>
 
-            @if (entry.Error is not null)
+            @if (expanded.Contains(job.Id) && job.Error is not null)
             {
-                <div class="alert alert-danger mt-3 mb-0">@entry.Error</div>
+                <div class="alert alert-danger mt-3 mb-0">@job.Error</div>
             }
-            else if (entry.Result is { } result)
+            else if (expanded.Contains(job.Id) && job.Result is { } result)
             {
                 <div class="mt-3">
                     @foreach (var (chunk, index) in result.Chunks.Select((c, i) => (c, i)))
@@ -39,7 +51,6 @@
                                     <span class="d-flex align-items-center gap-2">
                                         <span class="metric-pill metric-pill-neutral">#@index</span>
                                         <span class="metric-pill metric-pill-neutral">@chunk.Content.Length chars</span>
-                                        <span class="metric-pill">@chunk.Embedding.Length dims</span>
                                     </span>
                                 </div>
                                 <MarkdownView Text="@chunk.Content" Raw="showRaw" />
@@ -59,15 +70,18 @@
 
 @code {
     [Parameter, EditorRequired]
-    public IReadOnlyList<Entry> Entries { get; set; } = [];
+    public IReadOnlyList<IngestJob> Jobs { get; set; } = [];
 
     private bool showRaw;
 
-    // A file name or page URL; set Result or Error once it is done.
-    public sealed class Entry(string name)
+    // Only open rows render their chunks, since the list re-renders on every step of the queue.
+    private readonly HashSet<Guid> expanded = [];
+
+    private void Toggle(Guid id)
     {
-        public string Name { get; } = name;
-        public IngestResult? Result { get; set; }
-        public string? Error { get; set; }
+        if (!expanded.Remove(id))
+        {
+            expanded.Add(id);
+        }
     }
 }

@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
 namespace Lantrn.Infra;
 
 // A key for the public API. It acts as its user, with whatever roles they have when it is used.
@@ -18,4 +21,17 @@ public sealed class ApiKey
     public DateTime CreatedAt { get; set; }
 
     public DateTime? LastUsedAt { get; set; }
+}
+
+public sealed class ApiKeyConfiguration : IEntityTypeConfiguration<ApiKey>
+{
+    public void Configure(EntityTypeBuilder<ApiKey> builder)
+    {
+        // A removed user's keys stop working with them.
+        builder.HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(k => k.UserId)
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.HasIndex(k => k.KeyHash).IsUnique();
+    }
 }

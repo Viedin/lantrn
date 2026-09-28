@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
 namespace Lantrn.Infra;
 
 // The installation's endpoints and models, kept in a single row so they can be changed without a redeploy.
@@ -24,6 +27,18 @@ public sealed class AppSettings
         Assistant = Assistant.Copy(),
         Access = Access.Copy(),
     };
+}
+
+public sealed class AppSettingsConfiguration : IEntityTypeConfiguration<AppSettings>
+{
+    public void Configure(EntityTypeBuilder<AppSettings> builder)
+    {
+        builder.Property(s => s.Id).ValueGeneratedNever();
+        builder.ComplexProperty(s => s.Embeddings);
+        builder.ComplexProperty(s => s.Vision);
+        builder.ComplexProperty(s => s.Assistant);
+        builder.ComplexProperty(s => s.Access);
+    }
 }
 
 public sealed class AccessSettings

@@ -1,0 +1,107 @@
+@using System.Text
+
+@inject IngestQueue Queue
+@inject DocumentStore Documents
+@inject WebCrawler Crawler
+@inject ILogger<QuickAdd> Log
+
+@* A link becomes the page it points to; anything else is stored as a note. *@
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <label class="form-label" for="quick-add">Quick add</label>
+        <textarea id="quick-add" class="form-control mb-3" rows="3" @bind="text" @bind:event="oninput"
+                  placeholder="Paste a link to a web page, or write or paste a note"></textarea>
+
+        <div class="row g-3 align-items-start">
+            <div class="col-md-5">
+                <CollectionSelect Id="quick-add-collection" Collections="collections" @bind-Value="collection" />
+            </div>
+            <div class="col-md-auto pt-md-4 mt-md-2">
+                <button class="btn btn-primary" @onclick="AddAsync" disabled="@(string.IsNullOrWhiteSpace(text) || string.IsNullOrEmpty(collection) || busy)">
+                    @if (busy)
+                    {
+                        <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
+                    }
+                    Add @(IsLink(text, out _) ? "page" : "note")
+                </button>
+            </div>
+        </div>
+
+        @if (message is not null)
+        {
+            <div class="alert alert-success mt-3 mb-0">@message <a href="ingest">See progress</a></div>
+        }
+        @if (error is not null)
+        {
+            <div class="alert alert-danger mt-3 mb-0">@error</div>
+        }
+    </div>
+</div>
+
+@code {
+    private const int MaxTitleLength = 60;
+
+    private string text = string.Empty;
+    private string? message;
+    private string? error;
+    private bool busy;
+    private IReadOnlyList<CollectionSummary> collections = [];
+    private string collection = string.Empty;
+
+    protected override async Task OnInitializedAsync()
+    {
+        collections = await Documents.ListCollectionsAsync();
+        collection = CollectionSelect.Pick(collections, null);
+    }
+
+    private async Task AddAsync()
+    {
+        busy = true;
+        message = null;
+        error = null;
+
+        try
+        {
+            if (IsLink(text, out var url))
+            {
+                // Fetched here rather than queued, so a page that can't be read is reported right away.
+                var page = await Crawler.FetchAsync(url);
+                await Queue.EnqueueAsync(
+                    new IngestRequest(collection, url.ToString(), page.FileName, [], new IngestOptions(), KeepOriginal: false), page.Bytes);
+                message = $"Queued {url} for '{collection}'.";
+            }
+            else
+            {
+                // The time keeps two notes that start the same from replacing each other.
+                var source = $"{Title(text)} ({DateTime.Now:yyyy-MM-dd HH:mm})";
+                await Queue.EnqueueAsync(
+                    new IngestRequest(collection, source, "note.md", [], new IngestOptions(), KeepOriginal: false), Encoding.UTF8.GetBytes(text.Trim()));
+                message = $"Queued the note \"{source}\" for '{collection}'.";
+            }
+
+            text = string.Empty;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Quick add into '{Collection}' failed", collection);
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
+    }
+
+    private static bool IsLink(string input, out Uri url)
+    {
+        var trimmed = input.Trim();
+        return Uri.TryCreate(trimmed, UriKind.Absolute, out url!) && url.Scheme is "http" or "https" && !trimmed.Any(char.IsWhiteSpace);
+    }
+
+    // "# Meeting notes\n..." -> "Meeting notes"
+    private static string Title(string note)
+    {
+        var firstLine = note.Split('\n').Select(line => line.Trim().TrimStart('#').Trim()).FirstOrDefault(line => line.Length > 0) ?? "Note";
+        return firstLine.Length <= MaxTitleLength ? firstLine : firstLine[..MaxTitleLength].TrimEnd() + "…";
+    }
+}

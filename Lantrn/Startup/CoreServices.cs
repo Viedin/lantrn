@@ -38,7 +38,13 @@ public static class CoreServices
         services.Configure<StorageOptions>(configuration.GetSection(StorageOptions.SectionName));
         services.AddSingleton<DocumentStore>();
         services.AddSingleton<DocumentIngestor>();
-        services.AddHostedService<DocumentFolderWatcher>();
+        services.AddSingleton<IngestQueue>();
+        services.AddHostedService<IngestWorker>();
+        services.AddSingleton<SourceStore>();
+        services.AddSingleton<FolderSync>();
+        services.AddSingleton<WebsiteSync>();
+        services.AddSingleton<SourceSyncService>();
+        services.AddHostedService(provider => provider.GetRequiredService<SourceSyncService>());
         services.AddSingleton<AccountService>();
 
         // Keys live beside the data so sign-in cookies survive a container being recreated.
@@ -59,6 +65,7 @@ public static class CoreServices
 
         await app.Services.GetRequiredService<SettingsStore>().LoadAsync();
         await app.Services.GetRequiredService<DocumentStore>().EnsureDefaultCollectionAsync();
+        await app.Services.GetRequiredService<SourceStore>().EnsureDocumentsFolderAsync();
         await app.Services.GetRequiredService<AccountService>().EnsureAdminAsync();
     }
 }

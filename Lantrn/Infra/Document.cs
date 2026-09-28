@@ -1,3 +1,6 @@
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata.Builders;
+
 namespace Lantrn.Infra;
 
 public sealed class Document
@@ -16,12 +19,41 @@ public sealed class Document
     // File name under the originals folder, for documents whose uploaded file is kept (OCR images and PDFs).
     public string? OriginalFile { get; set; }
 
-    // SHA-256 of the file, set only for documents synced from the documents folder, so a changed file is re-embedded.
+    // SHA-256 of the ingested bytes, so a sync can skip what hasn't changed.
     public string? ContentHash { get; set; }
+
+    // The folder or website this document is synced from; null for uploads.
+    public Guid? SourceId { get; set; }
 
     public int ChunkCount { get; set; }
 
     public DateTime IngestedAt { get; set; }
 
     public List<DocumentTag> Tags { get; set; } = [];
+}
+
+public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
+{
+    public void Configure(EntityTypeBuilder<Document> builder)
+    {
+        builder.HasOne<Collection>()
+            .WithMany(c => c.Documents)
+            .HasForeignKey(d => d.Collection)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Re-ingesting the same file or URL into a collection refreshes its row instead of adding another.
+        builder.HasIndex(d => new { d.Collection, d.Source })
+            .IsUnique();
+
+        builder.HasMany(d => d.Tags)
+            .WithOne()
+            .HasForeignKey(t => t.DocumentId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Removing a source stops the syncing but keeps what it already brought in.
+        builder.HasOne<Source>()
+            .WithMany()
+            .HasForeignKey(d => d.SourceId)
+            .OnDelete(DeleteBehavior.SetNull);
+    }
 }

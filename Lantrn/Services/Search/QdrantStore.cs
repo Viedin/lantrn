@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Google.Protobuf.Collections;
 using Lantrn.Infra;
@@ -25,6 +26,9 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
 
     // Chunks on either side of a hit that are read with it, by people in the preview and by the assistant.
     public const int PassageRadius = 1;
+
+    // Checked once per collection rather than on every store. Collections are only deleted through this class.
+    private readonly ConcurrentDictionary<string, ulong> dimensionsByCollection = new();
 
     // Replaces the document's points with these (already embedded) chunks. The new points go in before
     // the old ones are removed, so a failure part way leaves the previous version searchable.
@@ -193,6 +197,7 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
 
     public async Task DeleteCollectionAsync(string collection, CancellationToken cancellationToken = default)
     {
+        dimensionsByCollection.TryRemove(collection, out _);
         if (!await client.CollectionExistsAsync(collection, cancellationToken))
         {
             return;
@@ -285,8 +290,21 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
     // The Qdrant side of a collection is created on its first upsert, once the embedding size is known.
     private async Task EnsureCollectionAsync(string collection, ulong dimensions, CancellationToken cancellationToken)
     {
-        if (await client.CollectionExistsAsync(collection, cancellationToken))
+        if (!dimensionsByCollection.TryGetValue(collection, out var existing) && await client.CollectionExistsAsync(collection, cancellationToken))
         {
+            var info = await client.GetCollectionInfoAsync(collection, cancellationToken);
+            existing = dimensionsByCollection[collection] = info.Config.Params.VectorsConfig.Params.Size;
+        }
+
+        // Qdrant fixes the size when the collection is created, so a new embedding model needs the vectors rebuilt.
+        if (existing != 0)
+        {
+            if (existing != dimensions)
+            {
+                throw new InvalidOperationException(
+                    $"'{collection}' holds {existing}-dimension vectors, but the embedding model gives {dimensions}. " +
+                    "Use Re-embed on the collection's page to switch it to the current model.");
+            }
             return;
         }
 
@@ -306,6 +324,8 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
             await client.CreatePayloadIndexAsync(
                 collection, field, PayloadSchemaType.Keyword, wait: true, cancellationToken: cancellationToken);
         }
+
+        dimensionsByCollection[collection] = dimensions;
     }
 }
 

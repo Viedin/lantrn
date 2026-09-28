@@ -1,11 +1,7 @@
 <div class="card card-panel mb-4">
     <div class="card-body">
         <div class="d-flex align-items-center gap-3 mb-2">
-            @* A crawl only knows its total once the site is mapped. *@
-            @if (Tally.Total > 0)
-            {
-                <strong class="flex-shrink-0 text-body-emphasis">@Tally.Done / @Tally.Total @Unit</strong>
-            }
+            <strong class="flex-shrink-0 text-body-emphasis">@Tally.Done / @Tally.Total documents</strong>
             <span class="text-truncate small flex-grow-1">@Tally.Step</span>
             @if (Busy)
             {
@@ -33,10 +29,7 @@
 
 @code {
     [Parameter, EditorRequired]
-    public State Tally { get; set; } = new();
-
-    [Parameter, EditorRequired]
-    public string Unit { get; set; } = string.Empty;
+    public IngestTally Tally { get; set; } = new();
 
     [Parameter]
     public bool Busy { get; set; }
@@ -46,15 +39,4 @@
 
     // Integer so the style attribute never picks up a culture's decimal comma.
     private int Percent => Tally.Total == 0 ? 0 : Math.Min(100, Tally.Done * 100 / Tally.Total);
-
-    public sealed class State
-    {
-        public int Total { get; set; }
-        public int Done { get; set; }
-        public int Stored { get; set; }
-        public int Chunks { get; set; }
-        public int Failed { get; set; }
-        public string? Step { get; set; }
-        public bool Stopping { get; set; }
-    }
 }

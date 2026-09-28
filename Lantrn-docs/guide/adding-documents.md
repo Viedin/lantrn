@@ -1,31 +1,47 @@
 # Adding documents
 
-There are three ways to get documents into Lantrn. All of them split documents into chunks, embed them and store them in a **collection**.
+There are several ways to get documents into Lantrn. All of them split documents into chunks, embed them and store them in a **collection**.
+
+Uploads, crawls and folder changes go into a **queue** that is worked through in the background. You can close the page while it runs, and anything still queued is picked up again after a restart.
 
 ## Supported files
 
-| Type       | Extensions                                  |
-| ---------- | ------------------------------------------- |
-| PDF        | `.pdf`                                      |
-| Markdown   | `.md`, `.markdown`                          |
-| Text       | `.txt`                                      |
-| HTML       | `.html`, `.htm`                             |
-| Images     | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`    |
+| Type         | Extensions                                        |
+| ------------ | ------------------------------------------------- |
+| PDF          | `.pdf`                                            |
+| Office       | `.docx`, `.pptx`, `.xlsx`, `.xls`, `.odt`, `.ods`, `.rtf` |
+| E-mail       | `.eml`, `.msg`                                    |
+| E-books      | `.epub`                                           |
+| Markdown     | `.md`, `.markdown`                                |
+| Text         | `.txt`                                            |
+| HTML         | `.html`, `.htm`                                   |
+| Data         | `.csv`, `.tsv`, `.json`, `.xml`, `.yaml`, `.yml`  |
+| Images       | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`          |
 
 Images are read by the **vision model** (not Tesseract), so photos of receipts or whiteboards work too. You need a vision model set up in [Settings](./configuration#vision) to ingest images.
 
 ## Upload
 
-**Ingest** page (admins only). Pick files, a collection and optional tags, then upload.
+**Ingest** page (admins only). Drop files on the upload area or click it to choose them, pick a collection and optional tags, then ingest.
+
+- **ZIP archives** are unpacked: every supported file inside becomes its own document, tagged with the folders it was in. Up to 1000 files and 500 MB unpacked.
+- **Paste a screenshot** anywhere on the page to add it, just like a chosen file.
+- Files can be at most 100 MB.
+
+## Quick add
+
+The **Dashboard** has a quick add box. Paste a link to add that one web page, or write or paste some text to store it as a note.
 
 ## Documents folder
 
-Anything in the documents folder is synced into the default `documents` collection:
+Anything in the documents folder is kept in sync:
 
-- New and changed files are ingested (changes are detected by content hash).
-- Deleted files are removed from the collection.
-- The folder is checked **once a minute**. Subfolders are included.
-- Files over 100 MB are skipped.
+- Files directly in the folder go into the default `documents` collection.
+- Each **top-level folder becomes a collection** with the same name, created if needed. `recipes/pasta.pdf` goes into `recipes`.
+- Deeper folders become **tags**: `hr/2025/leave.pdf` goes into `hr`, tagged `2025`.
+- New and changed files are ingested (changes are detected by content hash). Deleted files are removed from their collection.
+- Changes are usually picked up within seconds. The folder is also checked **once a minute**, for network shares that don't report changes.
+- Folder names must be valid collection names (lowercase letters, digits, `-` and `_`; upper case is lowered). Other folders, hidden files and files over 100 MB are skipped.
 
 With Docker Compose the folder is `documents/`, next to `docker-compose.yml`. Locally it is `data/documents/`.
 
@@ -37,15 +53,19 @@ With Docker Compose the folder is `documents/`, next to `docker-compose.yml`. Lo
 | ----------------- | -------------------------------------------------------------- |
 | Start URL         | Where the crawl begins. Always counts as one page.             |
 | Only pages under  | Limits the crawl to one path, e.g. `https://example.com/docs/` |
+| Keep in sync      | Never, daily or weekly. See below.                             |
 | Max pages         | The most pages to store. Default 100.                          |
 
 The crawler honours `robots.txt`, strips navigation and footers, and refuses private or local network addresses.
+
+Every crawled site is listed under **Websites** on the Crawl page, where you can crawl it again or remove it. A re-crawl only re-embeds pages that changed, and removes pages that are gone from the site. If a crawl finds less than half the pages it found before, nothing is removed, so a site that is briefly down doesn't empty the collection. Removing a website stops the syncing but keeps its pages.
 
 ## Collections and tags
 
 - **Collections** are separate indexes. Search one at a time. Names are lowercase letters, digits, `-` and `_`.
 - The `documents` collection always exists. It can be cleared but not deleted.
 - **Tags** are free-form labels (comma separated). You can filter search results by tag.
+- **Re-embed** on a collection's page chunks and embeds all its documents again, from what Lantrn already stored. Use it after switching to an embedding model with a different vector size, which the existing vectors can't be mixed with. Nothing needs uploading again, and images aren't sent to the vision model again.
 
 ## Chunking
 

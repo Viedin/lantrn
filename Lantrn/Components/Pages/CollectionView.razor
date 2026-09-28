@@ -5,6 +5,8 @@
 @using Lantrn.Services
 
 @inject DocumentStore Documents
+@inject IngestQueue Queue
+@inject EmbeddingService Embeddings
 @inject ILogger<CollectionView> Log
 
 <PageTitle>@Name</PageTitle>
@@ -45,19 +47,29 @@ else
             <a class="btn btn-outline-primary" href="crawl?collection=@EscapedName">
                 <i class="bi bi-globe2" aria-hidden="true"></i> Crawl a site
             </a>
+            <button class="btn btn-outline-primary" @onclick="() => confirmReembed = true" disabled="@(collection.DocumentCount == 0)"
+                    title="Embed every document again, such as after switching embedding models">
+                <i class="bi bi-arrow-repeat" aria-hidden="true"></i> Re-embed
+            </button>
         </div>
     </div>
 
-    @if (Name == DocumentStore.DefaultCollection)
-    {
-        <div class="alert alert-info">
-            Files placed in <code>@Documents.FolderPath</code> are added to this collection automatically and re-embedded when they change.
-        </div>
-    }
+    <div class="alert alert-info">
+        Files placed in <code>@(Name == DocumentStore.DefaultCollection ? Documents.FolderPath : Path.Combine(Documents.FolderPath, Name))</code>
+        are added to this collection automatically and re-embedded when they change.
+    </div>
 
     @if (error is not null)
     {
         <div class="alert alert-danger">@error</div>
+    }
+
+    @if (reembedQueued)
+    {
+        <div class="alert alert-success">
+            Every document in '@Name' is queued to be embedded again. Search in it is incomplete until they are done.
+            <a href="ingest">See progress</a>
+        </div>
     }
 
     <div class="d-flex flex-wrap align-items-center gap-3 mb-3">
@@ -165,6 +177,18 @@ else
                          OnConfirm="DeleteAsync" OnCancel="() => pendingDelete = null">
         Remove <strong>@pendingDelete?.Source</strong> and its vectors? This can't be undone.
     </DeleteConfirmModal>
+
+    <DeleteConfirmModal Show="confirmReembed" Busy="busy" Title="Re-embed collection?" ConfirmText="Re-embed"
+                         OnConfirm="ReembedAsync" OnCancel="() => confirmReembed = false">
+        <p>
+            Chunk and embed all @collection.DocumentCount.ToString("N0") documents in <strong>@Name</strong> again with
+            <code>@Embeddings.Model</code>, using the default chunking. Use this after switching embedding models.
+        </p>
+        <p class="mb-0">
+            Nothing needs uploading again, and images aren't read again by the vision model.
+            The current vectors are removed first, so search in this collection is incomplete until it is done.
+        </p>
+    </DeleteConfirmModal>
 }
 
 @code {
@@ -182,6 +206,8 @@ else
 
     private Guid? editingId;
     private DocumentSummary? pendingDelete;
+    private bool confirmReembed;
+    private bool reembedQueued;
 
     private string EscapedName => Uri.EscapeDataString(Name);
 
@@ -242,6 +268,33 @@ else
         var id = pendingDelete!.Id;
         await RunAsync(() => Documents.DeleteAsync(id), "Deleting document {DocumentId} failed", id);
         pendingDelete = null;
+    }
+
+    // A collection's vectors all have one size, so they are dropped together and rebuilt from the stored documents.
+    private async Task ReembedAsync()
+    {
+        busy = true;
+        error = null;
+
+        try
+        {
+            await Documents.DeleteVectorsAsync(Name);
+            foreach (var document in await Documents.ListDocumentsAsync(Name))
+            {
+                await Queue.EnqueueReembedAsync(Name, document.Id, document.Source);
+            }
+            reembedQueued = true;
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Queueing the re-embed of '{Collection}' failed", Name);
+            error = ex.Message;
+        }
+        finally
+        {
+            confirmReembed = false;
+            busy = false;
+        }
     }
 
     private async Task RunAsync(Func<Task> action, string failureMessage, Guid id)
