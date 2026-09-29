@@ -160,7 +160,8 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
         NotifyChanged();
     }
 
-    // A finished run is only kept while someone is looking at it.
+    // A finished run is only kept while someone is looking at it. Until then the tally only grows, so a crawl that
+    // fetches slower than the worker ingests still counts as one run.
     public void ClearIfIdle()
     {
         lock (gate)
@@ -171,6 +172,7 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
             }
 
             recent.Clear();
+            Tally = new IngestTally();
         }
 
         NotifyChanged();
@@ -279,6 +281,7 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
             if (!recent.Any(j => !j.IsFinished))
             {
                 Tally.Step = $"{(Tally.Stopping ? "Stopped. " : string.Empty)}Stored {Tally.Stored} of {Tally.Total} documents.";
+                Tally.Stopping = false;
             }
         }
 
@@ -300,11 +303,6 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
     {
         lock (gate)
         {
-            if (!recent.Any(j => !j.IsFinished))
-            {
-                Tally = new IngestTally();
-            }
-
             Tally.Total++;
             recent.Insert(0, job);
 
