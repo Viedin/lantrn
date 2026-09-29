@@ -164,8 +164,8 @@
 
 <DeleteConfirmModal Show="deleting is not null" Busy="busy" Title="Delete account?"
                     OnConfirm="DeleteAsync" OnCancel="() => deleting = null">
-    Remove <strong>@deleting?.Email</strong>? They are signed out and can only come back with a new invite.
-    Their collections stay, managed by the admins.
+    Remove <strong>@deleting?.Email</strong> and every collection they own, with all its documents? They are signed out and
+    can only come back with a new invite. This can't be undone.
 </DeleteConfirmModal>
 
 @code {

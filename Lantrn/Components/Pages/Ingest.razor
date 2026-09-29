@@ -157,6 +157,13 @@
             return;
         }
 
+        // The list was read when the page opened; the collection may have been made private or deleted since.
+        if (!await Documents.CanAccessAsync(collection.Id, (await AuthenticationState).User, CollectionAccess.Contribute))
+        {
+            error = $"You can no longer add to '{collection.Name}'. Reload the page to pick another collection.";
+            return;
+        }
+
         var tags = DocumentStore.ParseTags(tagsInput);
         var failures = new List<string>();
 

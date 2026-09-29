@@ -32,11 +32,11 @@ public sealed class CollectionConfiguration : IEntityTypeConfiguration<Collectio
 {
     public void Configure(EntityTypeBuilder<Collection> builder)
     {
-        // A removed user's collections stay, and the admins take them over.
+        // AccountService deletes a removed user's collections first; this only catches one created meanwhile.
         builder.HasOne<ApplicationUser>()
             .WithMany()
             .HasForeignKey(c => c.OwnerId)
-            .OnDelete(DeleteBehavior.SetNull);
+            .OnDelete(DeleteBehavior.Cascade);
 
         // Admin-managed names (a null owner) are kept unique by DocumentStore, since the database treats nulls as distinct.
         builder.HasIndex(c => new { c.OwnerId, c.Name }).IsUnique();

@@ -12,7 +12,7 @@ else
     <select id="@Id" class="form-select" value="@Value?.Id.ToString()" @onchange="OnChangedAsync">
         @foreach (var collection in Collections)
         {
-            <option value="@collection.Id">@CollectionLabels.Name(collection, Collections, user)</option>
+            <option value="@collection.Id">@labels[collection.Id]</option>
         }
     </select>
     <div class="form-text"><a href="collections">Manage collections</a></div>
@@ -35,8 +35,12 @@ else
     private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
 
     private ClaimsPrincipal user = new();
+    private Dictionary<Guid, string> labels = [];
 
     protected override async Task OnInitializedAsync() => user = (await AuthenticationState).User;
+
+    protected override void OnParametersSet() =>
+        labels = Collections.ToDictionary(c => c.Id, c => CollectionLabels.Name(c, Collections, user));
 
     // The requested collection (an id from the URL) when it is on offer, else the default one, else whichever comes first.
     public static CollectionSummary? Pick(IReadOnlyList<CollectionSummary> collections, string? requested) =>

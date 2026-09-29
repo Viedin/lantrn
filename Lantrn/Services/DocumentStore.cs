@@ -81,6 +81,17 @@ public sealed partial class DocumentStore(
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    // For checks that only need a yes or no, without counting the collection's documents.
+    public async Task<bool> CanAccessAsync(
+        Guid id,
+        ClaimsPrincipal user,
+        CollectionAccess access,
+        CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await db.Collections.AsNoTracking().WhereAllowed(user, access).AnyAsync(c => c.Id == id, cancellationToken);
+    }
+
     // The collections the admins manage, by name, which is how the documents folder refers to them.
     public async Task<Dictionary<string, Guid>> ListManagedCollectionsAsync(CancellationToken cancellationToken = default)
     {
@@ -151,6 +162,22 @@ public sealed partial class DocumentStore(
         await db.Collections.Where(c => c.Id == id).ExecuteDeleteAsync(cancellationToken);
 
         logger.LogInformation("Deleted collection {CollectionId}", id);
+    }
+
+    // A removed user's content goes with them, vectors and kept originals included.
+    public async Task DeleteCollectionsOwnedByAsync(string ownerId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var ids = await db.Collections
+            .AsNoTracking()
+            .Where(c => c.OwnerId == ownerId)
+            .Select(c => c.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var id in ids)
+        {
+            await DeleteCollectionAsync(id, cancellationToken);
+        }
     }
 
     // Removes every document and vector but keeps the collection itself.
@@ -271,12 +298,15 @@ public sealed partial class DocumentStore(
             .Select(g => new { g.Key.CollectionId, g.Key.Name, Documents = g.Count() })
             .ToListAsync(cancellationToken);
 
+        // A collection created since the list above was read is left out rather than shown without a name.
         var names = collections.ToDictionary(c => c.Id, c => c.Name);
         return new LibraryOverview(
             collections,
             recent,
             distinctTags,
-            [.. top.Select(t => new CollectionTagCount(t.CollectionId, names[t.CollectionId], t.Name, t.Documents))]);
+            [.. top
+                .Where(t => names.ContainsKey(t.CollectionId))
+                .Select(t => new CollectionTagCount(t.CollectionId, names[t.CollectionId], t.Name, t.Documents))]);
     }
 
     public async Task<Document?> GetAsync(Guid id, CancellationToken cancellationToken = default)

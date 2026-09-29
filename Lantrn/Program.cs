@@ -47,7 +47,7 @@ app.MapAccountEndpoints();
 
 app.MapGet("/documents/{id:guid}/original", async (Guid id, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken) =>
     await documents.GetLocationAsync(id, cancellationToken) is { } location
-    && await documents.GetCollectionAsync(location.CollectionId, user, CollectionAccess.Read, cancellationToken) is not null
+    && await documents.CanAccessAsync(location.CollectionId, user, CollectionAccess.Read, cancellationToken)
     && await documents.GetOriginalAsync(id, cancellationToken) is { } original
         ? Results.File(original.Path, original.ContentType, enableRangeProcessing: true)
         : Results.NotFound())

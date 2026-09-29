@@ -72,17 +72,17 @@ else if (collections.Count == 0)
 else
 {
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <input class="form-control" style="max-width: 20rem;" @bind="filter" @bind:event="oninput"
+        <input class="form-control" style="max-width: 20rem;" @bind="filter" @bind:event="oninput" @bind:after="Refilter"
                placeholder="Filter by name, description or owner…" aria-label="Filter collections" />
-        <select class="form-select w-auto" @bind="visibilityFilter" aria-label="Filter by visibility">
+        <select class="form-select w-auto" @bind="visibilityFilter" @bind:after="Refilter" aria-label="Filter by visibility">
             <option value="">Public and private</option>
             <option value="@Visibility.Public">Public</option>
             <option value="@Visibility.Private">Private</option>
         </select>
-        <span class="small ms-auto">@Shown.Count.ToString("N0") of @collections.Count.ToString("N0")</span>
+        <span class="small ms-auto">@shown.Count.ToString("N0") of @collections.Count.ToString("N0")</span>
     </div>
 
-    @if (Shown.Count == 0)
+    @if (shown.Count == 0)
     {
         <div class="empty-state">
             <span class="empty-icon" aria-hidden="true"><i class="bi bi-funnel"></i></span>
@@ -106,7 +106,7 @@ else
                         </tr>
                     </thead>
                     <tbody>
-                        @foreach (var collection in Shown)
+                        @foreach (var collection in shown)
                         {
                             <tr>
                                 <td>
@@ -117,7 +117,7 @@ else
                                         <div class="small">@collection.Description</div>
                                     }
                                 </td>
-                                <td class="text-break">@CollectionLabels.Owner(collection, user)</td>
+                                <td class="text-break">@owners[collection.Id]</td>
                                 <td class="text-end">@collection.DocumentCount.ToString("N0")</td>
                                 <td class="text-end">@collection.ChunkCount.ToString("N0")</td>
                                 <td>@(collection.LastIngestedAt?.ToLocalTime().ToString("g") ?? "Never")</td>
@@ -175,6 +175,8 @@ else
 
     private ClaimsPrincipal user = new();
     private IReadOnlyList<CollectionSummary>? collections;
+    private IReadOnlyList<CollectionSummary> shown = [];
+    private Dictionary<Guid, string> owners = [];
     private string filter = string.Empty;
     private Visibility? visibilityFilter;
     private string newName = string.Empty;
@@ -191,7 +193,15 @@ else
         await LoadAsync();
     }
 
-    private IReadOnlyList<CollectionSummary> Shown => collections!
+    // Everything the viewer can read: their own collections and every public one, or all of them for admins.
+    private async Task LoadAsync()
+    {
+        collections = await Documents.ListCollectionsAsync(user, CollectionAccess.Read);
+        owners = collections.ToDictionary(c => c.Id, c => CollectionLabels.Owner(c, user));
+        Refilter();
+    }
+
+    private void Refilter() => shown = collections!
         .Where(c => visibilityFilter is null || c.IsPrivate == (visibilityFilter == Visibility.Private))
         .Where(Matches)
         .ToList();
@@ -207,11 +217,8 @@ else
         var term = filter.Trim();
         return collection.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
             || collection.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) == true
-            || CollectionLabels.Owner(collection, user).Contains(term, StringComparison.OrdinalIgnoreCase);
+            || owners[collection.Id].Contains(term, StringComparison.OrdinalIgnoreCase);
     }
-
-    // Everything the viewer can read: their own collections and every public one, or all of them for admins.
-    private async Task LoadAsync() => collections = await Documents.ListCollectionsAsync(user, CollectionAccess.Read);
 
     private async Task CreateAsync()
     {

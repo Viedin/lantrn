@@ -15,6 +15,7 @@ public sealed record InvitationSummary(Guid Id, string Email, string? InvitedBy,
 public sealed class AccountService(
     IServiceScopeFactory scopeFactory,
     IDbContextFactory<DatabaseContext> dbFactory,
+    DocumentStore documents,
     ILogger<AccountService> logger)
 {
     public static readonly TimeSpan InvitationLifetime = TimeSpan.FromDays(7);
@@ -102,6 +103,9 @@ public sealed class AccountService(
         {
             return Failed("The last admin can't be removed.");
         }
+
+        // Through the store rather than the cascading foreign key, so their vectors and kept originals go too.
+        await documents.DeleteCollectionsOwnedByAsync(user.Id);
 
         var result = await users.DeleteAsync(user);
         if (result.Succeeded)

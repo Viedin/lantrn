@@ -66,7 +66,7 @@
 
     // Only rendered for those who may edit, but the circuit would still run a handler after the role was taken away.
     private async Task<bool> CanEditAsync() =>
-        await Documents.GetCollectionAsync(CollectionId, (await AuthenticationState).User, CollectionAccess.Contribute) is not null;
+        await Documents.CanAccessAsync(CollectionId, (await AuthenticationState).User, CollectionAccess.Contribute);
 
     private async Task SaveTagsAsync(IReadOnlyList<string> newTags)
     {

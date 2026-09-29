@@ -345,6 +345,11 @@ else
 
     private async Task SetPrivateAsync(ChangeEventArgs e)
     {
+        if (!await StillAllowedAsync(CollectionAccess.Manage))
+        {
+            return;
+        }
+
         busy = true;
         error = null;
 
@@ -388,6 +393,11 @@ else
 
     private async Task DeleteSelectedAsync()
     {
+        if (!await StillAllowedAsync(CollectionAccess.Contribute))
+        {
+            return;
+        }
+
         busy = true;
         error = null;
         deletedCount = 0;
@@ -417,6 +427,11 @@ else
     // A collection's vectors all have one size, so they are dropped together and rebuilt from the stored documents.
     private async Task ReembedAsync()
     {
+        if (!await StillAllowedAsync(CollectionAccess.Manage))
+        {
+            return;
+        }
+
         busy = true;
         error = null;
 
@@ -441,8 +456,26 @@ else
         }
     }
 
+    // Access was checked when the page opened; since then the collection may have been made private or deleted.
+    // Losing it falls back to the page's "doesn't exist" state.
+    private async Task<bool> StillAllowedAsync(CollectionAccess access)
+    {
+        if (await Documents.CanAccessAsync(Id, user, access))
+        {
+            return true;
+        }
+
+        collection = null;
+        return false;
+    }
+
     private async Task RunAsync(Func<Task> action, string failureMessage, Guid id)
     {
+        if (!await StillAllowedAsync(CollectionAccess.Contribute))
+        {
+            return;
+        }
+
         busy = true;
         error = null;
 

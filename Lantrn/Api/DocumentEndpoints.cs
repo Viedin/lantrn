@@ -93,7 +93,7 @@ public static class DocumentEndpoints
         [FromQuery] string? tag = null,
         [FromQuery] string? source = null)
     {
-        if (await documents.GetCollectionAsync(id, user, CollectionAccess.Read, cancellationToken) is null)
+        if (!await documents.CanAccessAsync(id, user, CollectionAccess.Read, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);
         }
@@ -236,7 +236,7 @@ public static class DocumentEndpoints
         ILoggerFactory loggers,
         CancellationToken cancellationToken)
     {
-        if (await documents.GetCollectionAsync(collectionId, user, CollectionAccess.Contribute, cancellationToken) is null)
+        if (!await documents.CanAccessAsync(collectionId, user, CollectionAccess.Contribute, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(collectionId);
         }

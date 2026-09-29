@@ -92,7 +92,7 @@ public static class CollectionEndpoints
         {
             return ApiProblems.Conflict($"The '{Collection.DefaultName}' collection can be cleared but not deleted.");
         }
-        if (await documents.GetCollectionAsync(id, user, CollectionAccess.Manage, cancellationToken) is null)
+        if (!await documents.CanAccessAsync(id, user, CollectionAccess.Manage, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);
         }
@@ -105,7 +105,7 @@ public static class CollectionEndpoints
     private static async Task<Results<NoContent, ProblemHttpResult>> ClearAsync(
         Guid id, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken)
     {
-        if (await documents.GetCollectionAsync(id, user, CollectionAccess.Manage, cancellationToken) is null)
+        if (!await documents.CanAccessAsync(id, user, CollectionAccess.Manage, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);
         }
@@ -117,7 +117,7 @@ public static class CollectionEndpoints
     private static async Task<Results<Ok<IReadOnlyList<TagResponse>>, ProblemHttpResult>> ListTagsAsync(
         Guid id, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken)
     {
-        if (await documents.GetCollectionAsync(id, user, CollectionAccess.Read, cancellationToken) is null)
+        if (!await documents.CanAccessAsync(id, user, CollectionAccess.Read, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);
         }

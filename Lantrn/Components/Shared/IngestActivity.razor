@@ -23,18 +23,20 @@
 
     private IReadOnlyList<IngestJob> jobs = [];
     private Dictionary<Guid, string> names = [];
+    private ClaimsPrincipal user = new();
     private bool busy;
     private bool isAdmin;
 
     protected override async Task OnInitializedAsync()
     {
-        isAdmin = (await AuthenticationState).User.IsInRole(Roles.Admin);
+        user = (await AuthenticationState).User;
+        isAdmin = user.IsInRole(Roles.Admin);
         Queue.Changed += OnQueueChanged;
     }
 
     protected override void OnParametersSet()
     {
-        names = Collections.ToDictionary(c => c.Id, c => c.Name);
+        names = Collections.ToDictionary(c => c.Id, c => CollectionLabels.Name(c, Collections, user));
         Snapshot();
     }
 

@@ -49,6 +49,12 @@
     {
         <div class="alert alert-danger">@error</div>
     }
+    else if (RequestedCollectionMissing && collection is not null)
+    {
+        <div class="alert alert-warning">
+            The collection in this link doesn't exist or is private, so '@labels[collection.Id]' is searched instead.
+        </div>
+    }
 
     @if (busy && hits is null)
     {
@@ -158,6 +164,10 @@
     private bool revealPending;
 
     private bool IsLanding => string.IsNullOrWhiteSpace(Q) && hits is null && !busy && error is null;
+
+    // A link can name a collection that was deleted, made private, or is an old name from before collections had ids.
+    private bool RequestedCollectionMissing =>
+        !string.IsNullOrEmpty(CollectionParameter) && !(Guid.TryParse(CollectionParameter, out var id) && id == collection?.Id);
 
     private SearchHit? SelectedHit => hits is not null && selected >= 0 && selected < hits.Count ? hits[selected] : null;
 
@@ -327,10 +337,18 @@
 
         var timer = Stopwatch.StartNew();
 
+        // The list was read when the page opened; the collection may have been made private or deleted since.
+        if (!await Documents.CanAccessAsync(collection!.Id, user, CollectionAccess.Read))
+        {
+            error = "This collection is no longer available. Reload the page to see what you can search.";
+            busy = false;
+            return;
+        }
+
         try
         {
             var tags = selectedTags.Order().ToList();
-            var results = await Searcher.SearchAsync(collection!.Id, query, tags, kind, limit);
+            var results = await Searcher.SearchAsync(collection.Id, query, tags, kind, limit);
 
             var queryTerms = SearchTerms.Of(query);
             terms = queryTerms.ToArray();
