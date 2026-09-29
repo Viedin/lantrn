@@ -5,8 +5,8 @@ namespace Lantrn.Api;
 // The RFC 7807 errors the endpoints return, so the same failure reads the same everywhere.
 internal static class ApiProblems
 {
-    public static ProblemHttpResult CollectionNotFound(string name) =>
-        NotFound($"There is no collection named '{name}'.");
+    public static ProblemHttpResult CollectionNotFound(Guid id) =>
+        NotFound($"There is no collection with id {id}.");
 
     public static ProblemHttpResult DocumentNotFound(Guid id) =>
         NotFound($"There is no document with id {id}.");

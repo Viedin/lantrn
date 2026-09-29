@@ -4,23 +4,29 @@ using Lantrn.Services;
 namespace Lantrn.Api;
 
 /// <summary>A collection: a separately searchable set of documents.</summary>
-/// <param name="Name">The collection's key: lowercase letters, digits, '-' and '_'.</param>
+/// <param name="Id">The collection's id, used in every collection URL.</param>
+/// <param name="Name">Lowercase letters, digits, '-' and '_'. Unique per owner, so other owners may use the same name.</param>
 /// <param name="Description">What the collection holds, if one was given.</param>
+/// <param name="IsPrivate">Whether only its owner and admins can search it. Public collections are open to every user, and to guests while public search is on.</param>
 /// <param name="CreatedAt">When the collection was created.</param>
 /// <param name="DocumentCount">How many documents the collection holds.</param>
 /// <param name="ChunkCount">How many searchable chunks those documents were split into.</param>
 /// <param name="LastIngestedAt">When a document was last added or refreshed, or null while the collection is empty.</param>
 public sealed record CollectionResponse(
+    Guid Id,
     string Name,
     string? Description,
+    bool IsPrivate,
     DateTimeOffset CreatedAt,
     int DocumentCount,
     int ChunkCount,
     DateTimeOffset? LastIngestedAt)
 {
     internal static CollectionResponse From(CollectionSummary collection) => new(
+        collection.Id,
         collection.Name,
         collection.Description,
+        collection.IsPrivate,
         ApiTime.Utc(collection.CreatedAt),
         collection.DocumentCount,
         collection.ChunkCount,
@@ -32,7 +38,7 @@ public sealed record CreateCollectionRequest
 {
     /// <summary>
     /// Lowercase letters, digits, '-' and '_', starting with a letter or digit; at most 63 characters.
-    /// The name can't be changed later.
+    /// Unique among the collections of the key's user.
     /// </summary>
     [Required]
     [RegularExpression("^[a-z0-9][a-z0-9_-]{0,62}$",
@@ -42,6 +48,9 @@ public sealed record CreateCollectionRequest
     /// <summary>What the collection holds, shown next to its name.</summary>
     [MaxLength(500)]
     public string? Description { get; init; }
+
+    /// <summary>Only its owner and admins can search a private collection. Public by default.</summary>
+    public bool IsPrivate { get; init; }
 }
 
 /// <summary>A tag and how many documents in the collection carry it.</summary>

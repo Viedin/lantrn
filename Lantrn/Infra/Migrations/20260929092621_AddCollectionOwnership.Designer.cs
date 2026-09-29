@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Lantrn.Infra;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Lantrn.Infra.Migrations
 {
     [DbContext(typeof(DatabaseContext))]
-    partial class DatabaseContextModelSnapshot : ModelSnapshot
+    [Migration("20260929092621_AddCollectionOwnership")]
+    partial class AddCollectionOwnership
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -247,8 +250,7 @@ namespace Lantrn.Infra.Migrations
 
             modelBuilder.Entity("Lantrn.Infra.Collection", b =>
                 {
-                    b.Property<Guid>("Id")
-                        .ValueGeneratedOnAdd()
+                    b.Property<string>("Name")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
@@ -260,18 +262,12 @@ namespace Lantrn.Infra.Migrations
                     b.Property<bool>("IsPrivate")
                         .HasColumnType("INTEGER");
 
-                    b.Property<string>("Name")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<string>("OwnerId")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                    b.HasKey("Name");
 
-                    b.HasIndex("OwnerId", "Name")
-                        .IsUnique();
+                    b.HasIndex("OwnerId");
 
                     b.ToTable("Collections");
                 });
@@ -282,14 +278,11 @@ namespace Lantrn.Infra.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("AddedById")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
                     b.Property<int>("ChunkCount")
                         .HasColumnType("INTEGER");
 
-                    b.Property<Guid>("CollectionId")
+                    b.Property<string>("Collection")
+                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<string>("ContentHash")
@@ -317,11 +310,9 @@ namespace Lantrn.Infra.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AddedById");
-
                     b.HasIndex("SourceId");
 
-                    b.HasIndex("CollectionId", "Source")
+                    b.HasIndex("Collection", "Source")
                         .IsUnique();
 
                     b.ToTable("Documents");
@@ -381,15 +372,15 @@ namespace Lantrn.Infra.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
-                    b.Property<string>("AddedById")
+                    b.Property<string>("Collection")
                         .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<Guid>("CollectionId")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("LastError")
                         .HasColumnType("TEXT");
@@ -430,9 +421,7 @@ namespace Lantrn.Infra.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AddedById");
-
-                    b.HasIndex("CollectionId");
+                    b.HasIndex("Collection");
 
                     b.ToTable("Sources");
                 });
@@ -579,21 +568,14 @@ namespace Lantrn.Infra.Migrations
                     b.HasOne("Lantrn.Infra.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
                 });
 
             modelBuilder.Entity("Lantrn.Infra.Document", b =>
                 {
-                    b.HasOne("Lantrn.Infra.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("AddedById")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("Lantrn.Infra.Collection", null)
                         .WithMany("Documents")
-                        .HasForeignKey("CollectionId")
+                        .HasForeignKey("Collection")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
@@ -614,15 +596,9 @@ namespace Lantrn.Infra.Migrations
 
             modelBuilder.Entity("Lantrn.Infra.Source", b =>
                 {
-                    b.HasOne("Lantrn.Infra.ApplicationUser", null)
-                        .WithMany()
-                        .HasForeignKey("AddedById")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("Lantrn.Infra.Collection", null)
                         .WithMany()
-                        .HasForeignKey("CollectionId")
+                        .HasForeignKey("Collection")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });

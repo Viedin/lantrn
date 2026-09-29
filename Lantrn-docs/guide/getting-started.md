@@ -41,9 +41,7 @@ A **vision** model (for images) and a **chat** model (for answers) are optional.
 
 ## 4. Add documents
 
-The quickest way: drop files into the `documents/` folder next to `docker-compose.yml`. Lantrn picks them up within a minute.
-
-Or upload them on the **Ingest** page. See [Adding documents](./adding-documents) for all the options.
+Create a collection on the **Collections** page, then upload files into it on the **Ingest** page, or crawl a website on the **Crawl** page. See [Adding documents](./adding-documents) for all the options.
 
 ## 5. Search
 

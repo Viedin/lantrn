@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Lantrn.Infra;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Lantrn.Infra.Migrations
 {
     [DbContext(typeof(DatabaseContext))]
-    partial class DatabaseContextModelSnapshot : ModelSnapshot
+    [Migration("20260929112052_TrackWhoAddedContent")]
+    partial class TrackWhoAddedContent
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -265,7 +268,6 @@ namespace Lantrn.Infra.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("OwnerId")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
@@ -283,7 +285,6 @@ namespace Lantrn.Infra.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("AddedById")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<int>("ChunkCount")
@@ -382,7 +383,6 @@ namespace Lantrn.Infra.Migrations
                         .HasColumnType("TEXT");
 
                     b.Property<string>("AddedById")
-                        .IsRequired()
                         .HasColumnType("TEXT");
 
                     b.Property<Guid>("CollectionId")
@@ -390,6 +390,9 @@ namespace Lantrn.Infra.Migrations
 
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("TEXT");
+
+                    b.Property<int>("Kind")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("LastError")
                         .HasColumnType("TEXT");
@@ -579,8 +582,7 @@ namespace Lantrn.Infra.Migrations
                     b.HasOne("Lantrn.Infra.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("OwnerId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.Cascade);
                 });
 
             modelBuilder.Entity("Lantrn.Infra.Document", b =>
@@ -588,8 +590,7 @@ namespace Lantrn.Infra.Migrations
                     b.HasOne("Lantrn.Infra.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("AddedById")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Lantrn.Infra.Collection", null)
                         .WithMany("Documents")
@@ -617,8 +618,7 @@ namespace Lantrn.Infra.Migrations
                     b.HasOne("Lantrn.Infra.ApplicationUser", null)
                         .WithMany()
                         .HasForeignKey("AddedById")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
+                        .OnDelete(DeleteBehavior.SetNull);
 
                     b.HasOne("Lantrn.Infra.Collection", null)
                         .WithMany()

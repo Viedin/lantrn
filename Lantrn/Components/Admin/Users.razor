@@ -17,8 +17,8 @@
     <span class="eyebrow">Admin</span>
     <h1>Users</h1>
     <p class="lead-text">
-        Admins manage documents, settings and users. Everyone else can search and read. Whether they need an
-        account for that is set under <a href="settings">Settings</a>.
+        Admins manage every collection, the settings and the users. Users create their own collections, public or private,
+        and search the public ones. Whether visitors without an account can search too is set under <a href="settings">Settings</a>.
     </p>
 </div>
 
@@ -139,7 +139,7 @@
                                 }
                                 else
                                 {
-                                    <span class="metric-pill metric-pill-neutral">Reader</span>
+                                    <span class="metric-pill metric-pill-neutral">User</span>
                                 }
                             </td>
                             <td class="text-end text-nowrap">
@@ -147,7 +147,7 @@
                                 @if (!self)
                                 {
                                     <button class="btn btn-sm btn-outline-secondary" disabled="@busy" @onclick="() => SetAdminAsync(user, !user.IsAdmin)">
-                                        @(user.IsAdmin ? "Make reader" : "Make admin")
+                                        @(user.IsAdmin ? "Make user" : "Make admin")
                                     </button>
                                     <button class="btn btn-sm btn-outline-danger ms-1" disabled="@busy" @onclick="() => deleting = user">
                                         <i class="bi bi-trash" aria-hidden="true"></i> Delete
@@ -164,7 +164,20 @@
 
 <DeleteConfirmModal Show="deleting is not null" Busy="busy" Title="Delete account?"
                     OnConfirm="DeleteAsync" OnCancel="() => deleting = null">
-    Remove <strong>@deleting?.Email</strong>? They are signed out and can only come back with a new invite.
+    @if (deleting?.IsAdmin == true)
+    {
+        <text>
+            Remove <strong>@deleting.Email</strong>? Their collections, documents and websites are handed to you, and
+            collections whose name you already use get a number added. They are signed out and can only come back with a new invite.
+        </text>
+    }
+    else
+    {
+        <text>
+            Remove <strong>@deleting?.Email</strong>, every collection they own, and every document and website they added to
+            other collections? They are signed out and can only come back with a new invite. This can't be undone.
+        </text>
+    }
 </DeleteConfirmModal>
 
 @code {
@@ -237,7 +250,7 @@
 
     private Task DeleteAsync() => RunAsync(async () =>
     {
-        ReportFailure(await Accounts.DeleteUserAsync(deleting!.Id));
+        ReportFailure(await Accounts.DeleteUserAsync(deleting!.Id, currentUserId!));
         deleting = null;
     }, "Deleting a user");
 

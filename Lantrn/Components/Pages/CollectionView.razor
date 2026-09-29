@@ -1,4 +1,4 @@
-@page "/collections/{Name}"
+@page "/collections/{Id:guid}"
 @rendermode InteractiveServer
 
 @using Lantrn.Infra
@@ -9,7 +9,7 @@
 @inject EmbeddingService Embeddings
 @inject ILogger<CollectionView> Log
 
-<PageTitle>@Name</PageTitle>
+<PageTitle>@(collection?.Name ?? "Collection")</PageTitle>
 
 @if (loading)
 {
@@ -20,7 +20,7 @@
 }
 else if (collection is null)
 {
-    <div class="alert alert-warning">There is no collection named '@Name'.</div>
+    <div class="alert alert-warning">This collection doesn't exist, or it's private.</div>
 }
 else
 {
@@ -35,28 +35,43 @@ else
                 }
                 <span class="metric-pill metric-pill-neutral">@collection.DocumentCount.ToString("N0") documents</span>
                 <span class="metric-pill metric-pill-neutral">@collection.ChunkCount.ToString("N0") chunks</span>
+                <span class="metric-pill metric-pill-neutral">Owner: @CollectionLabels.Owner(collection, user)</span>
+                @if (!canManage)
+                {
+                    <VisibilityPill IsPrivate="collection.IsPrivate" />
+                }
             </p>
+            @if (canManage)
+            {
+                <div class="form-check form-switch">
+                    <input id="private" type="checkbox" role="switch" class="form-check-input"
+                           checked="@collection.IsPrivate" disabled="@busy" @onchange="SetPrivateAsync" />
+                    <label class="form-check-label" for="private">
+                        @(collection.IsPrivate
+                            ? "Private: only the owner and the admins can search it"
+                            : "Public: everyone who can search sees it, and every user can add and remove documents")
+                    </label>
+                </div>
+            }
         </div>
         <div class="d-flex flex-wrap gap-2">
-            <a class="btn btn-primary" href="./?collection=@EscapedName">
+            <a class="btn btn-primary" href="./?collection=@Id">
                 <i class="bi bi-search" aria-hidden="true"></i> Search
             </a>
-            <a class="btn btn-outline-primary" href="ingest?collection=@EscapedName">
+            <a class="btn btn-outline-primary" href="ingest?collection=@Id">
                 <i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i> Add files
             </a>
-            <a class="btn btn-outline-primary" href="crawl?collection=@EscapedName">
+            <a class="btn btn-outline-primary" href="crawl?collection=@Id">
                 <i class="bi bi-globe2" aria-hidden="true"></i> Crawl a site
             </a>
-            <button class="btn btn-outline-primary" @onclick="() => confirmReembed = true" disabled="@(collection.DocumentCount == 0)"
-                    title="Embed every document again, such as after switching embedding models">
-                <i class="bi bi-arrow-repeat" aria-hidden="true"></i> Re-embed
-            </button>
+            @if (canManage)
+            {
+                <button class="btn btn-outline-primary" @onclick="() => confirmReembed = true" disabled="@(collection.DocumentCount == 0)"
+                        title="Embed every document again, such as after switching embedding models">
+                    <i class="bi bi-arrow-repeat" aria-hidden="true"></i> Re-embed
+                </button>
+            }
         </div>
-    </div>
-
-    <div class="alert alert-info">
-        Files placed in <code>@(Name == DocumentStore.DefaultCollection ? Documents.FolderPath : Path.Combine(Documents.FolderPath, Name))</code>
-        are added to this collection automatically and re-embedded when they change.
     </div>
 
     @if (error is not null)
@@ -67,7 +82,7 @@ else
     @if (reembedQueued)
     {
         <div class="alert alert-success">
-            Every document in '@Name' is queued to be embedded again. Search in it is incomplete until they are done.
+            Every document in '@collection.Name' is queued to be embedded again. Search in it is incomplete until they are done.
             <a href="ingest">See progress</a>
         </div>
     }
@@ -132,6 +147,7 @@ else
                             <th>Document</th>
                             <th>Tags</th>
                             <th class="text-end">Chunks</th>
+                            <th>Added by</th>
                             <th>Ingested</th>
                             <th></th>
                         </tr>
@@ -173,6 +189,7 @@ else
                                     }
                                 </td>
                                 <td class="text-end">@document.ChunkCount.ToString("N0")</td>
+                                <td class="text-break">@CollectionLabels.Person(document.AddedById, document.AddedByEmail, user)</td>
                                 <td>@document.IngestedAt.ToLocalTime().ToString("g")</td>
                                 <td class="text-end text-nowrap">
                                     <button class="btn btn-sm btn-outline-primary" @onclick="() => editingId = document.Id"
@@ -206,14 +223,14 @@ else
         }
         else
         {
-            <text>Remove the @selected.Count.ToString("N0") selected documents and their vectors from <strong>@Name</strong>? This can't be undone.</text>
+            <text>Remove the @selected.Count.ToString("N0") selected documents and their vectors from <strong>@collection.Name</strong>? This can't be undone.</text>
         }
     </DeleteConfirmModal>
 
     <DeleteConfirmModal Show="confirmReembed" Busy="busy" Title="Re-embed collection?" ConfirmText="Re-embed"
                          OnConfirm="ReembedAsync" OnCancel="() => confirmReembed = false">
         <p>
-            Chunk and embed all @collection.DocumentCount.ToString("N0") documents in <strong>@Name</strong> again with
+            Chunk and embed all @collection.DocumentCount.ToString("N0") documents in <strong>@collection.Name</strong> again with
             <code>@Embeddings.Model</code>, using the default chunking. Use this after switching embedding models.
         </p>
         <p class="mb-0">
@@ -225,8 +242,13 @@ else
 
 @code {
     [Parameter]
-    public string Name { get; set; } = string.Empty;
+    public Guid Id { get; set; }
 
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private ClaimsPrincipal user = new();
+    private bool canManage;
     private CollectionSummary? collection;
     private IReadOnlyList<DocumentSummary> documents = [];
     private IReadOnlyList<TagCount> tags = [];
@@ -245,8 +267,6 @@ else
     private bool confirmDeleteSelected;
     private int deletedCount;
 
-    private string EscapedName => Uri.EscapeDataString(Name);
-
     private bool AllSelected => documents.Count > 0 && documents.All(d => selected.Contains(d.Id));
 
     protected override async Task OnParametersSetAsync()
@@ -255,7 +275,9 @@ else
         selectedTag = null;
         sourceFilter = string.Empty;
 
-        collection = await Documents.GetCollectionAsync(Name);
+        user = (await AuthenticationState).User;
+        collection = await Documents.GetCollectionAsync(Id, user, CollectionAccess.Contribute);
+        canManage = collection?.Allows(user, CollectionAccess.Manage) == true;
         if (collection is not null)
         {
             await LoadTagsAsync();
@@ -268,7 +290,7 @@ else
     // A selection only ever holds shown documents, so a filter change can't leave hidden ones to be deleted.
     private async Task LoadDocumentsAsync()
     {
-        documents = await Documents.ListDocumentsAsync(Name, selectedTag, sourceFilter);
+        documents = await Documents.ListDocumentsAsync(Id, selectedTag, sourceFilter);
         selected.IntersectWith(documents.Select(d => d.Id));
     }
 
@@ -298,7 +320,7 @@ else
 
     private async Task LoadTagsAsync()
     {
-        tags = await Documents.ListTagsAsync(Name);
+        tags = await Documents.ListTagsAsync(Id);
         if (selectedTag is not null && tags.All(t => t.Name != selectedTag))
         {
             selectedTag = null;
@@ -307,9 +329,35 @@ else
 
     private async Task ReloadAsync()
     {
-        collection = await Documents.GetCollectionAsync(Name);
+        collection = await Documents.GetCollectionAsync(Id, user, CollectionAccess.Contribute);
         await LoadTagsAsync();
         await LoadDocumentsAsync();
+    }
+
+    private async Task SetPrivateAsync(ChangeEventArgs e)
+    {
+        if (!await StillAllowedAsync(CollectionAccess.Manage))
+        {
+            return;
+        }
+
+        busy = true;
+        error = null;
+
+        try
+        {
+            await Documents.SetVisibilityAsync(Id, (bool)e.Value!);
+            collection = await Documents.GetCollectionAsync(Id, user, CollectionAccess.Contribute);
+        }
+        catch (Exception ex)
+        {
+            Log.LogError(ex, "Changing the visibility of collection {CollectionId} failed", Id);
+            error = ex.Message;
+        }
+        finally
+        {
+            busy = false;
+        }
     }
 
     private async Task ToggleTagAsync(string tag)
@@ -336,6 +384,11 @@ else
 
     private async Task DeleteSelectedAsync()
     {
+        if (!await StillAllowedAsync(CollectionAccess.Contribute))
+        {
+            return;
+        }
+
         busy = true;
         error = null;
         deletedCount = 0;
@@ -351,7 +404,7 @@ else
         }
         catch (Exception ex)
         {
-            Log.LogError(ex, "Deleting the selected documents from '{Collection}' failed", Name);
+            Log.LogError(ex, "Deleting the selected documents from collection {CollectionId} failed", Id);
             error = $"Deleted {deletedCount:N0} of {selected.Count:N0} documents, then: {ex.Message}";
         }
         finally
@@ -365,21 +418,26 @@ else
     // A collection's vectors all have one size, so they are dropped together and rebuilt from the stored documents.
     private async Task ReembedAsync()
     {
+        if (!await StillAllowedAsync(CollectionAccess.Manage))
+        {
+            return;
+        }
+
         busy = true;
         error = null;
 
         try
         {
-            await Documents.DeleteVectorsAsync(Name);
-            foreach (var document in await Documents.ListDocumentsAsync(Name))
+            await Documents.DeleteVectorsAsync(Id);
+            foreach (var document in await Documents.ListDocumentsAsync(Id))
             {
-                await Queue.EnqueueReembedAsync(Name, document.Id, document.Source);
+                await Queue.EnqueueReembedAsync(Id, document.Id, document.Source, CollectionAccessRules.SignedInUserId(user));
             }
             reembedQueued = true;
         }
         catch (Exception ex)
         {
-            Log.LogError(ex, "Queueing the re-embed of '{Collection}' failed", Name);
+            Log.LogError(ex, "Queueing the re-embed of collection {CollectionId} failed", Id);
             error = ex.Message;
         }
         finally
@@ -389,8 +447,26 @@ else
         }
     }
 
+    // Access was checked when the page opened; since then the collection may have been made private or deleted.
+    // Losing it falls back to the page's "doesn't exist" state.
+    private async Task<bool> StillAllowedAsync(CollectionAccess access)
+    {
+        if (await Documents.CanAccessAsync(Id, user, access))
+        {
+            return true;
+        }
+
+        collection = null;
+        return false;
+    }
+
     private async Task RunAsync(Func<Task> action, string failureMessage, Guid id)
     {
+        if (!await StillAllowedAsync(CollectionAccess.Contribute))
+        {
+            return;
+        }
+
         busy = true;
         error = null;
 

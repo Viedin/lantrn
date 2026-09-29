@@ -1,3 +1,4 @@
-@* The workspace is for admins; opt out with [AllowAnonymous]. Search and documents live in Components/Public. *@
-@attribute [Authorize(Roles = Roles.Admin)]
+@* The library: every account manages its own collections here, admins all of them. Opt out with [AllowAnonymous].
+   Admin-only pages live in Components/Admin, search and documents in Components/Public. *@
+@attribute [Authorize]
 @using Lantrn.Infra

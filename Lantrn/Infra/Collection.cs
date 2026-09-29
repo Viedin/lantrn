@@ -5,10 +5,17 @@ namespace Lantrn.Infra;
 
 public sealed class Collection
 {
-    // Also the Qdrant collection name. Qdrant cannot rename a collection, so the name doubles as the key.
+    // Also names the Qdrant collection, so names can repeat between owners and never reach Qdrant.
+    public Guid Id { get; set; }
+
+    // Unique per owner.
     public required string Name { get; set; }
 
     public string? Description { get; set; }
+
+    public required string OwnerId { get; set; }
+
+    public bool IsPrivate { get; set; }
 
     public DateTime CreatedAt { get; set; }
 
@@ -19,6 +26,12 @@ public sealed class CollectionConfiguration : IEntityTypeConfiguration<Collectio
 {
     public void Configure(EntityTypeBuilder<Collection> builder)
     {
-        builder.HasKey(c => c.Name);
+        // AccountService deletes a removed user's collections first; this only catches one created meanwhile.
+        builder.HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(c => c.OwnerId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        builder.HasIndex(c => new { c.OwnerId, c.Name }).IsUnique();
     }
 }

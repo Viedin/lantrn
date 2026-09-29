@@ -11,11 +11,10 @@ It's built with Blazor Server, uses [Qdrant](https://qdrant.tech) for vectors an
 - Hybrid search: embeddings combined with keyword matching
 - PDF, Office files, e-mail, e-books, Markdown, HTML, plain text and images (OCR through a vision model)
 - Drag-and-drop, ZIP and screenshot uploads, processed in a background queue
-- A synced documents folder, where each folder becomes a collection
 - Website crawling, with optional daily or weekly re-crawls
 - Collections and tags to keep things organized
 - Optional LLM answers based on your search results
-- Users, admins and invites
+- Users, admins and invites, with private and shared public collections
 
 ## Running it
 

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Lantrn.Api;
 using Lantrn.Components;
 using Lantrn.Services;
@@ -44,8 +45,10 @@ app.MapRazorComponents<App>()
 
 app.MapAccountEndpoints();
 
-app.MapGet("/documents/{id:guid}/original", async (Guid id, DocumentStore documents, CancellationToken cancellationToken) =>
-    await documents.GetOriginalAsync(id, cancellationToken) is { } original
+app.MapGet("/documents/{id:guid}/original", async (Guid id, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken) =>
+    await documents.GetLocationAsync(id, cancellationToken) is { } location
+    && await documents.CanAccessAsync(location.CollectionId, user, CollectionAccess.Read, cancellationToken)
+    && await documents.GetOriginalAsync(id, cancellationToken) is { } original
         ? Results.File(original.Path, original.ContentType, enableRangeProcessing: true)
         : Results.NotFound())
     .RequireAuthorization(SearchAccess.Policy);

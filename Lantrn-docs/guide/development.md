@@ -40,7 +40,8 @@ Lantrn/
 ├── Api/              # Public REST API
 ├── Components/
 │   ├── Public/       # Search and document view (search access)
-│   ├── Pages/        # Admin pages (admin only)
+│   ├── Pages/        # Collections, ingest and crawl (signed in)
+│   ├── Admin/        # Dashboard, users, settings, API keys (admin only)
 │   ├── Account/      # Login and register
 │   ├── Search/       # Search UI parts
 │   └── Shared/       # Reusable components
@@ -48,7 +49,7 @@ Lantrn/
 └── Infra/            # EF entities, DbContext, migrations
 ```
 
-Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pages/` needs the Admin role.
+Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pages/` needs an account, `Admin/` needs the Admin role. Which collections someone can read or edit is decided in `CollectionAccess`.
 
 ## Key services
 
@@ -62,7 +63,7 @@ Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pa
 | `Reranker`                    | Reorders candidates through a `/rerank` endpoint              |
 | `DocumentStore`               | Collections, documents, tags. Keeps SQLite and Qdrant in step |
 | `IngestQueue`, `IngestWorker` | Background queue that ingests one job at a time               |
-| `SourceSyncService`           | Syncs the documents folder and websites                       |
+| `SourceSyncService`           | Re-crawls websites on their schedule                          |
 | `WebCrawler`                  | Finds and fetches pages for a crawl                           |
 | `SearchAssistant`             | Answers from search results with citations                    |
 | `SettingsStore`               | In-memory copy of the settings row                            |

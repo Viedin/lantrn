@@ -20,42 +20,14 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
     private readonly Channel<IngestJob> channel = Channel.CreateUnbounded<IngestJob>();
     private readonly Lock gate = new();
     private readonly List<IngestJob> recent = [];
-    private static readonly TimeSpan RetryFailedAfter = TimeSpan.FromHours(1);
-
-    private readonly Dictionary<(string Collection, string Source, string ContentHash), DateTime> failed = [];
     private CancellationTokenSource? running;
-    private CancellationTokenSource stop = new();
+    private IngestJob? runningJob;
 
     public string InboxPath { get; } = Path.Combine(
         Path.GetFullPath(storage.Value.DataPath, environment.ContentRootPath), "inbox");
 
-    public IngestTally Tally { get; private set; } = new();
-
     // Raised from background threads; components re-render through InvokeAsync.
     public event Action? Changed;
-
-    // Tripped by Stop, so a website sync stops fetching pages along with the queue.
-    public CancellationToken StopToken
-    {
-        get
-        {
-            lock (gate)
-            {
-                return stop.Token;
-            }
-        }
-    }
-
-    public bool IsBusy
-    {
-        get
-        {
-            lock (gate)
-            {
-                return recent.Any(j => !j.IsFinished);
-            }
-        }
-    }
 
     // Newest first.
     public IReadOnlyList<IngestJob> Recent
@@ -109,70 +81,56 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
     }
 
     // Kept in the inbox like an upload, just without bytes, so a restart still finishes the re-embed.
-    public Task EnqueueReembedAsync(string collection, Guid documentId, string source, CancellationToken cancellationToken = default) =>
+    // Queued by whoever asked for it; the document itself stays credited to whoever added it.
+    public Task EnqueueReembedAsync(
+        Guid collectionId, Guid documentId, string source, string queuedById, CancellationToken cancellationToken = default) =>
         EnqueueAsync(
-            new IngestRequest(collection, source, source, [], new IngestOptions(), ReembedDocumentId: documentId), [], cancellationToken);
+            new IngestRequest(collectionId, source, source, [], new IngestOptions(), queuedById, ReembedDocumentId: documentId),
+            [], cancellationToken);
 
-    // For a file that stays where it is, in the documents folder. Not kept across restarts: the next sync finds it again.
-    public void EnqueueFile(IngestRequest request, string path) => Add(new IngestJob(Guid.NewGuid(), request, path, ownsFile: false));
-
-    public bool IsPending(string collection, string source)
+    public bool IsPending(Guid collectionId, string source)
     {
         lock (gate)
         {
-            return recent.Any(j => !j.IsFinished && j.Request.Collection == collection && j.Request.Source == source);
+            return recent.Any(j => !j.IsFinished && j.Request.CollectionId == collectionId && j.Request.Source == source);
         }
     }
 
-    // So a sync doesn't keep queuing a file that failed as it is, such as a broken PDF. Kept apart from the recent
-    // jobs, which are cleared. Retried after a while, in case the failure was the embedding server being down.
-    public bool HasFailed(string collection, string source, string contentHash)
+    public void ReportStep(IngestJob job, string step)
     {
-        lock (gate)
-        {
-            return failed.TryGetValue((collection, source, contentHash), out var failedAt)
-                   && DateTime.UtcNow - failedAt < RetryFailedAfter;
-        }
-    }
-
-    public void ReportStep(string step)
-    {
-        Tally.Step = step;
+        job.Step = step;
         NotifyChanged();
     }
 
-    public void StopAll()
+    // The queue is shared, so each person stops only their own jobs.
+    public void Stop(Func<IngestJob, bool> which)
     {
         lock (gate)
         {
-            foreach (var job in recent.Where(j => j.Status == IngestJobStatus.Queued))
+            foreach (var job in recent.Where(j => j.Status == IngestJobStatus.Queued && which(j)))
             {
                 job.Status = IngestJobStatus.Cancelled;
-                Tally.Done++;
             }
 
-            Tally.Stopping = true;
-            running?.Cancel();
-            stop.Cancel();
-            stop = new CancellationTokenSource();
+            if (runningJob is not null && which(runningJob))
+            {
+                running?.Cancel();
+            }
         }
 
         NotifyChanged();
     }
 
-    // A finished run is only kept while someone is looking at it. Until then the tally only grows, so a crawl that
-    // fetches slower than the worker ingests still counts as one run.
-    public void ClearIfIdle()
+    // Someone's finished jobs are only kept while they are looking at them, and only once all of them are done,
+    // so a crawl that fetches slower than the worker ingests still reads as one run.
+    public void ClearIfIdle(Func<IngestJob, bool> whose)
     {
         lock (gate)
         {
-            if (recent.Count == 0 || recent.Any(j => !j.IsFinished))
+            if (recent.Any(j => whose(j) && !j.IsFinished) || recent.RemoveAll(j => whose(j)) == 0)
             {
                 return;
             }
-
-            recent.Clear();
-            Tally = new IngestTally();
         }
 
         NotifyChanged();
@@ -228,8 +186,8 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
                 continue;
             }
 
-            Add(new IngestJob(id, request, DataPath(id), ownsFile: true));
-            logger.LogInformation("Resumed the queued ingest of {Source} into '{Collection}'", request.Source, request.Collection);
+            Add(new IngestJob(id, request, DataPath(id)));
+            logger.LogInformation("Resumed the queued ingest of {Source} into collection {CollectionId}", request.Source, request.CollectionId);
         }
     }
 
@@ -240,14 +198,12 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
         {
             if (job.Status == IngestJobStatus.Cancelled)
             {
-                if (job.OwnsFile)
-                {
-                    DeleteInboxFiles(job.Id);
-                }
+                DeleteInboxFiles(job.Id);
                 return null;
             }
 
             job.Status = IngestJobStatus.Running;
+            runningJob = job;
             running = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
             return running;
         }
@@ -259,51 +215,23 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
         {
             job.Status = status;
             running = null;
-            Tally.Done++;
-            if (status == IngestJobStatus.Done)
-            {
-                Tally.Stored++;
-                Tally.Chunks += job.Result?.Chunks.Count ?? 0;
-                foreach (var key in failed.Keys.Where(f => f.Collection == job.Request.Collection && f.Source == job.Request.Source).ToList())
-                {
-                    failed.Remove(key);
-                }
-            }
-            else if (status == IngestJobStatus.Failed)
-            {
-                Tally.Failed++;
-                if (job.ContentHash is { } hash)
-                {
-                    failed[(job.Request.Collection, job.Request.Source, hash)] = DateTime.UtcNow;
-                }
-            }
-
-            if (!recent.Any(j => !j.IsFinished))
-            {
-                Tally.Step = $"{(Tally.Stopping ? "Stopped. " : string.Empty)}Stored {Tally.Stored} of {Tally.Total} documents.";
-                Tally.Stopping = false;
-            }
+            runningJob = null;
         }
 
-        if (job.OwnsFile)
-        {
-            DeleteInboxFiles(job.Id);
-        }
-
+        DeleteInboxFiles(job.Id);
         NotifyChanged();
     }
 
     private async Task AddAsync(Guid id, IngestRequest request, CancellationToken cancellationToken)
     {
         await File.WriteAllTextAsync(RequestPath(id), JsonSerializer.Serialize(request), cancellationToken);
-        Add(new IngestJob(id, request, DataPath(id), ownsFile: true));
+        Add(new IngestJob(id, request, DataPath(id)));
     }
 
     private void Add(IngestJob job)
     {
         lock (gate)
         {
-            Tally.Total++;
             recent.Insert(0, job);
 
             for (var i = recent.Count - 1; i >= 0 && recent.Count > MaxRecentJobs; i--)

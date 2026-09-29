@@ -1,4 +1,5 @@
-@* Searching and reading: anyone signed in, or everyone while public search is on. Editing inside stays admin-only. *@
+@* Searching and reading: anyone signed in, or everyone while public search is on. Which collections they reach,
+   and whether they may edit, is decided per collection by CollectionAccess. *@
 @attribute [Authorize(Policy = SearchAccess.Policy)]
 @using Lantrn.Infra
 @using Lantrn.Services

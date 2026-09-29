@@ -9,10 +9,10 @@
 }
 else
 {
-    <select id="@Id" class="form-select" value="@Value" @onchange="OnChangedAsync">
+    <select id="@Id" class="form-select" value="@Value?.Id.ToString()" @onchange="OnChangedAsync">
         @foreach (var collection in Collections)
         {
-            <option value="@collection.Name">@collection.Name</option>
+            <option value="@collection.Id">@labels[collection.Id]</option>
         }
     </select>
     <div class="form-text"><a href="collections">Manage collections</a></div>
@@ -26,17 +26,30 @@ else
     public IReadOnlyList<CollectionSummary> Collections { get; set; } = [];
 
     [Parameter]
-    public string Value { get; set; } = string.Empty;
+    public CollectionSummary? Value { get; set; }
 
     [Parameter]
-    public EventCallback<string> ValueChanged { get; set; }
+    public EventCallback<CollectionSummary?> ValueChanged { get; set; }
 
-    // The requested collection when it exists, else the default one, else whichever comes first.
-    public static string Pick(IReadOnlyList<CollectionSummary> collections, string? requested) =>
-        collections.FirstOrDefault(c => c.Name == requested)?.Name
-            ?? collections.FirstOrDefault(c => c.Name == DocumentStore.DefaultCollection)?.Name
-            ?? collections.FirstOrDefault()?.Name
-            ?? string.Empty;
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
 
-    private Task OnChangedAsync(ChangeEventArgs e) => ValueChanged.InvokeAsync(e.Value?.ToString() ?? string.Empty);
+    private ClaimsPrincipal user = new();
+    private Dictionary<Guid, string> labels = [];
+
+    protected override async Task OnInitializedAsync() => user = (await AuthenticationState).User;
+
+    protected override void OnParametersSet() =>
+        labels = Collections.ToDictionary(c => c.Id, c => CollectionLabels.Name(c, Collections, user));
+
+    // The requested collection (an id from the URL) when it is on offer, else whichever comes first.
+    public static CollectionSummary? Pick(IReadOnlyList<CollectionSummary> collections, string? requested) =>
+        (Guid.TryParse(requested, out var id) ? collections.FirstOrDefault(c => c.Id == id) : null)
+            ?? collections.FirstOrDefault();
+
+    // The posted value comes from the browser; only a collection on offer may be picked.
+    private Task OnChangedAsync(ChangeEventArgs e) =>
+        Guid.TryParse(e.Value?.ToString(), out var id) && Collections.FirstOrDefault(c => c.Id == id) is { } picked
+            ? ValueChanged.InvokeAsync(picked)
+            : Task.CompletedTask;
 }

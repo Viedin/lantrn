@@ -4,6 +4,7 @@
 @using Lantrn.Services
 
 @inject DocumentStore Documents
+@inject AccountService Accounts
 
 <PageTitle>@(document?.Source ?? "Document")</PageTitle>
 
@@ -19,21 +20,27 @@ else
         <span class="eyebrow">Document</span>
         <h1 class="text-break">@document.Source</h1>
         <p class="lead-text d-flex flex-wrap align-items-center gap-2">
-            <AuthorizeView Roles="@Roles.Admin">
-                <Authorized>
-                    <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@Uri.EscapeDataString(document.Collection)">@document.Collection</a>
-                </Authorized>
-                <NotAuthorized>
-                    <span class="metric-pill metric-pill-neutral">@document.Collection</span>
-                </NotAuthorized>
-            </AuthorizeView>
+            @if (canEdit)
+            {
+                <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@collection!.Id">@collection.Name</a>
+            }
+            else
+            {
+                <span class="metric-pill metric-pill-neutral">@collection!.Name</span>
+            }
             <span class="metric-pill metric-pill-neutral">@document.Markdown.Length.ToString("N0") chars</span>
             <span class="metric-pill metric-pill-neutral">@document.ChunkCount.ToString("N0") chunks</span>
             @if (document.Kind == DocumentKind.Ocr)
             {
                 <span class="metric-pill" title="Text read from an image"><i class="bi bi-image" aria-hidden="true"></i> OCR</span>
             }
-            <span>Ingested @document.IngestedAt.ToLocalTime().ToString("g")</span>
+            <span>
+                Ingested @document.IngestedAt.ToLocalTime().ToString("g")
+                @if (addedBy is not null)
+                {
+                    <text>by @addedBy</text>
+                }
+            </span>
             @if (Uri.TryCreate(document.Source, UriKind.Absolute, out var url) && url.Scheme is "http" or "https")
             {
                 <a href="@url" target="_blank" rel="noopener noreferrer">
@@ -49,23 +56,20 @@ else
         </p>
     </div>
 
-    <AuthorizeView Roles="@Roles.Admin">
-        <Authorized>
-            <DocumentAdminBar @rendermode="InteractiveServer" DocumentId="Id" Source="@document.Source"
-                              Collection="@document.Collection" Tags="TagNames" />
-        </Authorized>
-        <NotAuthorized>
-            @if (TagNames.Count > 0)
+    @if (canEdit)
+    {
+        <DocumentAdminBar @rendermode="InteractiveServer" DocumentId="Id" Source="@document.Source"
+                          CollectionId="document.CollectionId" Tags="TagNames" />
+    }
+    else if (TagNames.Count > 0)
+    {
+        <p class="d-flex flex-wrap align-items-center gap-2 mb-3">
+            @foreach (var tag in TagNames)
             {
-                <p class="d-flex flex-wrap align-items-center gap-2 mb-3">
-                    @foreach (var tag in TagNames)
-                    {
-                        <span class="metric-pill">@tag</span>
-                    }
-                </p>
+                <span class="metric-pill">@tag</span>
             }
-        </NotAuthorized>
-    </AuthorizeView>
+        </p>
+    }
 
     @if (document.Kind == DocumentKind.Ocr && document.OriginalFile is not null)
     {
@@ -99,7 +103,13 @@ else
     [SupplyParameterFromQuery(Name = "raw")]
     public bool Raw { get; set; }
 
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
     private Document? document;
+    private CollectionSummary? collection;
+    private string? addedBy;
+    private bool canEdit;
 
     private string SelfHref => $"documents/{Id}";
 
@@ -107,8 +117,20 @@ else
 
     private IReadOnlyList<string> TagNames => document!.Tags.Select(t => t.Name).Order().ToList();
 
+    // A document in a collection the viewer can't read shows as missing, like one that was removed.
     protected override async Task OnParametersSetAsync()
     {
+        var user = (await AuthenticationState).User;
         document = await Documents.GetAsync(Id);
+        collection = document is null ? null : await Documents.GetCollectionAsync(document.CollectionId, user, CollectionAccess.Read);
+        if (collection is null)
+        {
+            document = null;
+        }
+        canEdit = collection?.Allows(user, CollectionAccess.Contribute) == true;
+        // Guests aren't told who added anything, so there is nothing to look up for them.
+        addedBy = document is null || user.Identity?.IsAuthenticated != true
+            ? null
+            : CollectionLabels.Person(document.AddedById, await Accounts.GetEmailAsync(document.AddedById), user);
     }
 }

@@ -77,31 +77,21 @@
     {
         <h2 class="section-label mb-3">Where does your data live?</h2>
         <div class="row g-3">
-            <div class="col-sm-6 col-xl-3">
+            <div class="col-md-4">
                 <a class="start-card" href="ingest">
                     <i class="bi bi-file-earmark-arrow-up" aria-hidden="true"></i>
                     <h3>On your computer</h3>
                     <p>Upload PDFs, Office files, e-mails, images or a whole ZIP. You can paste screenshots too.</p>
                 </a>
             </div>
-            <div class="col-sm-6 col-xl-3">
-                <div class="start-card">
-                    <i class="bi bi-folder2-open" aria-hidden="true"></i>
-                    <h3>In a folder</h3>
-                    <p>
-                        Anything in <code class="text-break">@Documents.FolderPath</code> is kept in sync; each folder in it becomes a collection.
-                        With Docker Compose, that's the <code>documents</code> folder next to <code>docker-compose.yml</code>.
-                    </p>
-                </div>
-            </div>
-            <div class="col-sm-6 col-xl-3">
+            <div class="col-md-4">
                 <a class="start-card" href="crawl">
                     <i class="bi bi-globe2" aria-hidden="true"></i>
                     <h3>On a website</h3>
                     <p>Crawl a documentation site or wiki, and re-crawl it daily or weekly to keep up with changes.</p>
                 </a>
             </div>
-            <div class="col-sm-6 col-xl-3">
+            <div class="col-md-4">
                 <a class="start-card" href="api-keys">
                     <i class="bi bi-code-slash" aria-hidden="true"></i>
                     <h3>In another tool</h3>
@@ -132,7 +122,7 @@
                                     <tr>
                                         <td><a class="fw-semibold text-body-emphasis text-break" href="documents/@document.Id">@document.Source</a></td>
                                         <td>
-                                            <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@Uri.EscapeDataString(document.Collection)">@document.Collection</a>
+                                            <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@document.CollectionId">@document.CollectionName</a>
                                         </td>
                                         <td class="text-end">@document.ChunkCount.ToString("N0")</td>
                                         <td class="text-end text-nowrap" title="@document.IngestedAt.ToLocalTime().ToString("g")">@TimeText.Ago(document.IngestedAt)</td>
@@ -152,7 +142,7 @@
                         {
                             <li class="list-group-item">
                                 <div class="d-flex justify-content-between gap-2">
-                                    <a class="fw-semibold text-body-emphasis text-break" href="collections/@Uri.EscapeDataString(collection.Name)">@collection.Name</a>
+                                    <a class="fw-semibold text-body-emphasis text-break" href="collections/@collection.Id">@collection.Name</a>
                                     <span class="small text-nowrap">@collection.DocumentCount.ToString("N0") docs · @collection.ChunkCount.ToString("N0") chunks</span>
                                 </div>
                                 <div class="progress mt-2" role="presentation" style="height: 0.35rem">
@@ -173,12 +163,12 @@
                     <div class="tag-chips">
                         @foreach (var tag in overview.TopTags)
                         {
-                            <a class="tag-chip text-decoration-none" title="Search '@tag.Collection' tagged @tag.Name"
-                               href="./?collection=@Uri.EscapeDataString(tag.Collection)&tag=@Uri.EscapeDataString(tag.Name)">
+                            <a class="tag-chip text-decoration-none" title="Search '@tag.CollectionName' tagged @tag.Name"
+                               href="./?collection=@tag.CollectionId&tag=@Uri.EscapeDataString(tag.Name)">
                                 @tag.Name
                                 @if (overview.Collections.Count > 1)
                                 {
-                                    <span class="tag-count">@tag.Collection</span>
+                                    <span class="tag-count">@tag.CollectionName</span>
                                 }
                                 <span class="tag-count">@tag.Documents</span>
                             </a>

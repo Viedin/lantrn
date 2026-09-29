@@ -12,13 +12,15 @@ public sealed class WebsiteSync(
     IEnumerable<ILinkExtractor> extractors,
     ILogger<WebsiteSync> logger)
 {
-    // Returns what went wrong, to show beside the site, or null. Stop in the ingest panel stops the crawl too.
-    public async Task<string?> SyncAsync(Source site, CancellationToken stoppingToken)
+    // Returns what went wrong, to show beside the site, or null. Stop in the ingest panel stops the crawl through stopToken.
+    // The pages are queued, and credited, as whoever started the crawl.
+    public async Task<string?> SyncAsync(
+        Source site, string startedById, Action<string> reportStep, CancellationToken stopToken, CancellationToken stoppingToken)
     {
-        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, queue.StopToken);
+        using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken, stopToken);
         try
         {
-            return await SyncSiteAsync(site, cancellation.Token);
+            return await SyncSiteAsync(site, startedById, reportStep, cancellation.Token);
         }
         catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
         {
@@ -31,15 +33,16 @@ public sealed class WebsiteSync(
         }
     }
 
-    private async Task<string?> SyncSiteAsync(Source site, CancellationToken cancellationToken)
+    private async Task<string?> SyncSiteAsync(
+        Source site, string startedById, Action<string> reportStep, CancellationToken cancellationToken)
     {
         var start = new Uri(site.Location);
         var stored = (await documents.ListSourceDocumentsAsync(site.Id, cancellationToken)).ToDictionary(d => d.Source);
         var extractor = extractors.FirstOrDefault(e => e.CanExtract(start));
 
         var (found, failed) = extractor is null
-            ? await CrawlAsync(site, start, stored, cancellationToken)
-            : await ExtractAsync(site, start, extractor, stored, cancellationToken);
+            ? await CrawlAsync(site, startedById, start, stored, reportStep, cancellationToken)
+            : await ExtractAsync(site, startedById, start, extractor, stored, reportStep, cancellationToken);
 
         // A site that is down or only half mapped must not empty the collection.
         var missing = stored.Values.Where(d => !found.Contains(d.Source)).ToList();
@@ -53,29 +56,40 @@ public sealed class WebsiteSync(
             await documents.DeleteAsync(document.Id, CancellationToken.None);
         }
 
-        logger.LogInformation("Synced {Site} into '{Collection}': {Found} documents, {Removed} removed, {Failed} failed",
-            site.Location, site.Collection, found.Count, missing.Count, failed);
+        logger.LogInformation("Synced {Site} into collection {CollectionId}: {Found} documents, {Removed} removed, {Failed} failed",
+            site.Location, site.CollectionId, found.Count, missing.Count, failed);
 
         return failed > 0 ? $"{failed} of {found.Count} pages could not be fetched." : null;
     }
 
     private async Task<(HashSet<string> Found, int Failed)> ExtractAsync(
-        Source site, Uri start, ILinkExtractor extractor, Dictionary<string, SyncedDocument> stored, CancellationToken cancellationToken)
+        Source site,
+        string startedById,
+        Uri start,
+        ILinkExtractor extractor,
+        Dictionary<string, SyncedDocument> stored,
+        Action<string> reportStep,
+        CancellationToken cancellationToken)
     {
-        queue.ReportStep($"Downloading {start}");
+        reportStep($"Downloading {start}");
         var files = await extractor.ExtractAsync(start, cancellationToken);
         foreach (var file in files)
         {
-            await EnqueueIfChangedAsync(site, file, stored, cancellationToken);
+            await EnqueueIfChangedAsync(site, startedById, file, stored, cancellationToken);
         }
 
         return (files.Select(f => f.Source).ToHashSet(), 0);
     }
 
     private async Task<(HashSet<string> Found, int Failed)> CrawlAsync(
-        Source site, Uri start, Dictionary<string, SyncedDocument> stored, CancellationToken cancellationToken)
+        Source site,
+        string startedById,
+        Uri start,
+        Dictionary<string, SyncedDocument> stored,
+        Action<string> reportStep,
+        CancellationToken cancellationToken)
     {
-        queue.ReportStep($"Reading the sitemap and following links from {start}");
+        reportStep($"Reading the sitemap and following links from {start}");
         var pages = await crawler.MapAsync(start, site.Scope ?? WebCrawler.DefaultScope(start), site.MaxPages, cancellationToken);
 
         var failed = 0;
@@ -84,10 +98,11 @@ public sealed class WebsiteSync(
             var page = pages[i];
             try
             {
-                queue.ReportStep($"Fetching page {i + 1} of {pages.Count}: {page}");
+                reportStep($"Fetching page {i + 1} of {pages.Count}");
                 var fetched = await crawler.FetchAsync(page, cancellationToken);
                 // The URL is the source, so search hits point back at the page.
-                await EnqueueIfChangedAsync(site, new ExtractedFile(page.ToString(), fetched.FileName, fetched.Bytes, []), stored, cancellationToken);
+                await EnqueueIfChangedAsync(
+                    site, startedById, new ExtractedFile(page.ToString(), fetched.FileName, fetched.Bytes, []), stored, cancellationToken);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
             {
@@ -100,16 +115,18 @@ public sealed class WebsiteSync(
     }
 
     private async Task EnqueueIfChangedAsync(
-        Source site, ExtractedFile file, Dictionary<string, SyncedDocument> stored, CancellationToken cancellationToken)
+        Source site, string startedById, ExtractedFile file, Dictionary<string, SyncedDocument> stored, CancellationToken cancellationToken)
     {
-        if (queue.IsPending(site.Collection, file.Source)
+        if (queue.IsPending(site.CollectionId, file.Source)
             || (stored.TryGetValue(file.Source, out var existing) && existing.ContentHash == DocumentStore.Hash(file.Bytes)))
         {
             return;
         }
 
         await queue.EnqueueAsync(
-            new IngestRequest(site.Collection, file.Source, file.FileName, [.. site.Tags.Union(file.Tags)], site.Chunking, site.Id, KeepOriginal: false),
+            new IngestRequest(
+                site.CollectionId, file.Source, file.FileName, [.. site.Tags.Union(file.Tags)], site.Chunking, startedById,
+                site.Id, KeepOriginal: false),
             file.Bytes, cancellationToken);
     }
 }

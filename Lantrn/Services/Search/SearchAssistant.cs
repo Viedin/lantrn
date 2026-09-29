@@ -29,12 +29,12 @@ public sealed class SearchAssistant(SettingsStore store, QdrantStore qdrant, ILo
 
     // Each hit with the chunks around it, the same passage the preview shows.
     public async Task<IReadOnlyList<AnswerSource>> LoadSourcesAsync(
-        string collection, IReadOnlyList<SearchHit> hits, CancellationToken cancellationToken = default)
+        Guid collectionId, IReadOnlyList<SearchHit> hits, CancellationToken cancellationToken = default)
     {
         return await Task.WhenAll(hits.Select(async hit =>
         {
             var passage = await qdrant.GetPassageAsync(
-                collection, hit.DocumentId, hit.ChunkIndex, QdrantStore.PassageRadius, cancellationToken);
+                collectionId, hit.DocumentId, hit.ChunkIndex, QdrantStore.PassageRadius, cancellationToken);
             var text = passage.Count > 0 ? string.Join("\n\n", passage.Select(c => c.Content.Trim())) : hit.Content;
             return new AnswerSource(hit, text);
         }));

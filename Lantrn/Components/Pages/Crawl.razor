@@ -78,8 +78,8 @@
             </div>
         </details>
 
-        <button class="btn btn-primary" @onclick="CrawlAsync" disabled="@(!IsValidUrl || string.IsNullOrEmpty(collection))">
-            @(Extractor is { } extractor ? $"Add {extractor.Label} to" : "Crawl into") @(string.IsNullOrEmpty(collection) ? "collection" : $"'{collection}'")
+        <button class="btn btn-primary" @onclick="CrawlAsync" disabled="@(!IsValidUrl || collection is null)">
+            @(Extractor is { } extractor ? $"Add {extractor.Label} to" : "Crawl into") @(collection is null ? "collection" : $"'{collection.Name}'")
         </button>
     </div>
 </div>
@@ -99,13 +99,14 @@
                     <tr>
                         <th>Website</th>
                         <th>Collection</th>
+                        <th>Added by</th>
                         <th>Keep in sync</th>
                         <th>Last crawled</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var site in websites)
+                    @foreach (var (site, addedByEmail) in websites)
                     {
                         <tr @key="site.Id">
                             <td class="text-break">
@@ -115,13 +116,18 @@
                                     <span class="small"> under @site.Scope</span>
                                 }
                             </td>
-                            <td><a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@Uri.EscapeDataString(site.Collection)">@site.Collection</a></td>
+                            <td><a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@site.CollectionId">@CollectionName(site)</a></td>
+                            <td class="text-break">@CollectionLabels.Person(site.AddedById, addedByEmail, user)</td>
                             <td>@ToSchedule(site.SyncInterval)</td>
                             <td>
                                 @if (Sync.IsSyncing(site.Id))
                                 {
                                     <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
                                     <span>Crawling…</span>
+                                    @if (Sync.StepOf(site.Id) is { } step)
+                                    {
+                                        <div class="small text-truncate">@step</div>
+                                    }
                                 }
                                 else
                                 {
@@ -133,7 +139,7 @@
                                 }
                             </td>
                             <td class="text-end text-nowrap">
-                                <button class="btn btn-sm btn-outline-primary" @onclick="() => Sync.SyncNow(site)" disabled="@Sync.IsSyncing(site.Id)">
+                                <button class="btn btn-sm btn-outline-primary" @onclick="() => CrawlNowAsync(site)" disabled="@Sync.IsSyncing(site.Id)">
                                     Crawl now
                                 </button>
                                 <button class="btn btn-sm btn-link" title="Stop keeping this site in sync. Its pages stay in the collection." @onclick="() => RemoveAsync(site)">
@@ -148,9 +154,14 @@
     </div>
 }
 
-<IngestActivity />
+<IngestActivity Collections="collections" />
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private ClaimsPrincipal user = new();
+
     private enum Schedule
     {
         Never,
@@ -166,8 +177,8 @@
     private Schedule schedule = Schedule.Never;
     private readonly IngestOptions options = new();
     private IReadOnlyList<CollectionSummary> collections = [];
-    private string collection = string.Empty;
-    private IReadOnlyList<Source> websites = [];
+    private CollectionSummary? collection;
+    private IReadOnlyList<WebsiteSource> websites = [];
 
     [SupplyParameterFromQuery(Name = "collection")]
     public string? CollectionParameter { get; set; }
@@ -175,7 +186,9 @@
     protected override async Task OnInitializedAsync()
     {
         Sync.Changed += OnSyncChanged;
-        collections = await Documents.ListCollectionsAsync();
+        Sync.StepChanged += OnSyncStepChanged;
+        user = (await AuthenticationState).User;
+        collections = await Documents.ListCollectionsAsync(user, CollectionAccess.Contribute);
         collection = CollectionSelect.Pick(collections, CollectionParameter);
         await LoadWebsitesAsync();
     }
@@ -201,7 +214,7 @@
     {
         var isWebsite = Extractor is null;
         error = isWebsite && maxPages <= 0 ? "Max pages must be positive." : options.Validate();
-        if (!IsValidUrl || string.IsNullOrEmpty(collection) || error is not null)
+        if (!IsValidUrl || collection is null || error is not null || !await StillAllowedAsync(collection.Id))
         {
             return;
         }
@@ -212,8 +225,9 @@
         try
         {
             var site = await Sources.SaveWebsiteAsync(
-                collection, start, prefix, maxPages, DocumentStore.ParseTags(tagsInput), options, ToInterval(schedule));
-            Sync.SyncNow(site);
+                collection.Id, start, prefix, maxPages, DocumentStore.ParseTags(tagsInput), options, ToInterval(schedule),
+                CollectionAccessRules.SignedInUserId(user));
+            Sync.SyncNow(site, CollectionAccessRules.SignedInUserId(user));
             await LoadWebsitesAsync();
         }
         catch (Exception ex)
@@ -223,20 +237,53 @@
         }
     }
 
+    private async Task CrawlNowAsync(Source site)
+    {
+        if (await StillAllowedAsync(site.CollectionId))
+        {
+            Sync.SyncNow(site, CollectionAccessRules.SignedInUserId(user));
+        }
+    }
+
     private async Task RemoveAsync(Source site)
     {
+        if (!await StillAllowedAsync(site.CollectionId))
+        {
+            return;
+        }
+
         await Sources.RemoveAsync(site.Id);
         await LoadWebsitesAsync();
     }
 
-    private async Task LoadWebsitesAsync() =>
-        websites = (await Sources.ListAsync()).Where(s => s.Kind == SourceKind.Website).ToList();
+    // The collections were read when the page opened; one may have been made private or deleted since.
+    private async Task<bool> StillAllowedAsync(Guid collectionId)
+    {
+        if (await Documents.CanAccessAsync(collectionId, user, CollectionAccess.Contribute))
+        {
+            return true;
+        }
 
+        error = "You can no longer add to that collection. Reload the page to see what you can crawl into.";
+        return false;
+    }
+
+    private async Task LoadWebsitesAsync() =>
+        websites = (await Sources.ListWebsitesAsync())
+            .Where(w => collections.Any(c => c.Id == w.Source.CollectionId))
+            .ToList();
+
+    private string CollectionName(Source site) =>
+        CollectionLabels.Name(collections.First(c => c.Id == site.CollectionId), collections, user);
+
+    // Only a crawl starting or finishing changes the list; a step just needs drawing.
     private void OnSyncChanged() => _ = InvokeAsync(async () =>
     {
         await LoadWebsitesAsync();
         StateHasChanged();
     });
+
+    private void OnSyncStepChanged() => _ = InvokeAsync(StateHasChanged);
 
     private static TimeSpan? ToInterval(Schedule schedule) => schedule switch
     {
@@ -248,5 +295,9 @@
     private static string ToSchedule(TimeSpan? interval) =>
         interval is null ? "Never" : interval == TimeSpan.FromDays(1) ? "Daily" : interval == TimeSpan.FromDays(7) ? "Weekly" : $"Every {interval}";
 
-    public void Dispose() => Sync.Changed -= OnSyncChanged;
+    public void Dispose()
+    {
+        Sync.Changed -= OnSyncChanged;
+        Sync.StepChanged -= OnSyncStepChanged;
+    }
 }

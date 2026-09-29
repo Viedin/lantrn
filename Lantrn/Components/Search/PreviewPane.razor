@@ -24,7 +24,7 @@ else
     <aside class="preview @(Open ? "is-open" : null)" aria-label="Preview">
         <header class="preview-head">
             <div class="preview-id">
-                <span class="preview-crumb">@SearchFormat.Crumb(Collection, current)</span>
+                <span class="preview-crumb">@SearchFormat.Crumb(CollectionName, current)</span>
                 <span class="preview-title">@current.Source</span>
             </div>
             <div class="preview-actions">
@@ -95,7 +95,10 @@ else
     public int Index { get; set; }
 
     [Parameter]
-    public string Collection { get; set; } = string.Empty;
+    public Guid CollectionId { get; set; }
+
+    [Parameter]
+    public string CollectionName { get; set; } = string.Empty;
 
     // On narrow screens the preview is a sheet that opens only when asked.
     [Parameter]
@@ -166,7 +169,7 @@ else
 
         try
         {
-            var chunks = await Qdrant.GetPassageAsync(Collection, documentId, chunkIndex, QdrantStore.PassageRadius, cancellation);
+            var chunks = await Qdrant.GetPassageAsync(CollectionId, documentId, chunkIndex, QdrantStore.PassageRadius, cancellation);
             // Crawled PDFs are not kept, so have nothing to open.
             var hasPdf = hit.FirstPage is not null
                 && await Documents.GetOriginalAsync(documentId, cancellation) is { ContentType: "application/pdf" };

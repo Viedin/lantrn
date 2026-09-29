@@ -7,7 +7,7 @@ namespace Lantrn.Api;
 
 /// <summary>A document in a collection, without its text.</summary>
 /// <param name="Id">The document's id.</param>
-/// <param name="Collection">The collection it belongs to.</param>
+/// <param name="CollectionId">The id of the collection it belongs to.</param>
 /// <param name="Source">The file name or URL it was ingested from. Ingesting the same source into the collection again replaces it.</param>
 /// <param name="Kind">Text, or Ocr for text read from an image.</param>
 /// <param name="Tags">Its tags, in lowercase.</param>
@@ -16,7 +16,7 @@ namespace Lantrn.Api;
 /// <param name="IngestedAt">When it was added or last refreshed.</param>
 public sealed record DocumentResponse(
     Guid Id,
-    string Collection,
+    Guid CollectionId,
     string Source,
     DocumentKind Kind,
     IReadOnlyList<string> Tags,
@@ -24,9 +24,9 @@ public sealed record DocumentResponse(
     int Characters,
     DateTimeOffset IngestedAt)
 {
-    internal static DocumentResponse From(string collection, DocumentSummary document) => new(
+    internal static DocumentResponse From(Guid collectionId, DocumentSummary document) => new(
         document.Id,
-        collection,
+        collectionId,
         document.Source,
         document.Kind,
         document.Tags,
@@ -36,7 +36,7 @@ public sealed record DocumentResponse(
 
     internal static DocumentResponse From(Document document) => new(
         document.Id,
-        document.Collection,
+        document.CollectionId,
         document.Source,
         document.Kind,
         document.Tags.Select(t => t.Name).Order().ToList(),
@@ -47,7 +47,7 @@ public sealed record DocumentResponse(
 
 /// <summary>A document with the markdown it was extracted to.</summary>
 /// <param name="Id">The document's id.</param>
-/// <param name="Collection">The collection it belongs to.</param>
+/// <param name="CollectionId">The id of the collection it belongs to.</param>
 /// <param name="Source">The file name or URL it was ingested from.</param>
 /// <param name="Kind">Text, or Ocr for text read from an image.</param>
 /// <param name="Tags">Its tags, in lowercase.</param>
@@ -57,7 +57,7 @@ public sealed record DocumentResponse(
 /// <param name="Markdown">The full text, as markdown.</param>
 public sealed record DocumentDetailResponse(
     Guid Id,
-    string Collection,
+    Guid CollectionId,
     string Source,
     DocumentKind Kind,
     IReadOnlyList<string> Tags,
@@ -68,7 +68,7 @@ public sealed record DocumentDetailResponse(
 {
     internal static DocumentDetailResponse From(Document document) => new(
         document.Id,
-        document.Collection,
+        document.CollectionId,
         document.Source,
         document.Kind,
         document.Tags.Select(t => t.Name).Order().ToList(),
