@@ -30,14 +30,16 @@ public sealed class SettingsStore(
         current = settings;
     }
 
-    // What a fresh install starts with: the built-in values, overlaid by any Embeddings/Vision/Assistant sections in
-    // configuration, so a deployment can pre-set its endpoints.
+    // What a fresh install starts with: the built-in values, overlaid by any Embeddings/Vision/Assistant/Reranker
+    // sections in configuration, so a deployment can pre-set its endpoints.
     public AppSettings CreateDefaults()
     {
         var settings = new AppSettings();
         configuration.GetSection("Embeddings").Bind(settings.Embeddings);
         configuration.GetSection("Vision").Bind(settings.Vision);
         configuration.GetSection("Assistant").Bind(settings.Assistant);
+        configuration.GetSection("Reranker").Bind(settings.Reranker);
+        configuration.GetSection("Keywords").Bind(settings.Keywords);
         configuration.GetSection("Access").Bind(settings.Access);
         return settings;
     }

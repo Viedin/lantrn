@@ -5,21 +5,26 @@ using Lantrn.Infra;
 using Lantrn.Services.Ingestion;
 using Qdrant.Client;
 using Qdrant.Client.Grpc;
+using Document = Qdrant.Client.Grpc.Document;
 
 namespace Lantrn.Services.Search;
 
 /// <summary>
 /// Writes chunks (content + embedding + heading metadata) into a Qdrant collection.
 /// </summary>
-public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger)
+public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogger<QdrantStore> logger)
 {
     private const string TagsField = "tags";
     private const string DocumentIdField = "document_id";
     private const string KindField = "kind";
     private const string ChunkIndexField = "chunk_index";
 
-    // The sparse vector beside the unnamed dense one.
+    // The sparse vector beside the unnamed dense one, filled by Qdrant's own BM25 from the chunk text.
     private const string KeywordVector = "keywords";
+    private const string KeywordModel = "qdrant/bm25";
+
+    // Words in a full chunk plus its document and section lines, for BM25's length normalisation.
+    private const double AverageChunkWords = 300;
 
     // Each side of the fusion ranks this many candidates, so a match strong on only one side can still surface.
     private const ulong MinCandidates = 50;
@@ -44,13 +49,14 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
         ArgumentOutOfRangeException.ThrowIfZero(chunks.Count);
         await EnsureCollectionAsync(collection, (ulong)chunks[0].Embedding.Length, cancellationToken);
 
+        var language = store.Current.Keywords.Language;
         var ids = chunks.Select(_ => Guid.NewGuid()).ToList();
         var points = chunks.Select((chunk, i) =>
         {
             var point = new PointStruct
             {
                 Id = new PointId { Uuid = ids[i].ToString() },
-                Vectors = HybridVectors(chunk.Embedding, KeywordEncoder.EncodeDocument(chunk.IndexText(sourceFile))),
+                Vectors = HybridVectors(chunk.Embedding, Keywords(chunk.IndexText(sourceFile), language)),
             };
 
             point.Payload.Add("source", sourceFile);
@@ -98,13 +104,12 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
         ulong limit = 5,
         CancellationToken cancellationToken = default)
     {
-        var keywords = KeywordEncoder.EncodeQuery(queryText);
         // A query of only punctuation or single letters has no keywords to match on.
-        var hybrid = keywords.Indices.Length > 0;
+        var hybrid = SearchTerms.Of(queryText).Count > 0;
 
         logger.LogInformation(
-            "Searching '{Collection}' ({Mode}) with a {Dimensions}-dim vector and {Keywords} keywords for the top {Limit}, tags [{Tags}], kind {Kind}",
-            collection, hybrid ? "hybrid" : "meaning only", queryVector.Length, keywords.Indices.Length, limit,
+            "Searching '{Collection}' ({Mode}) with a {Dimensions}-dim vector for the top {Limit}, tags [{Tags}], kind {Kind}",
+            collection, hybrid ? "hybrid" : "meaning only", queryVector.Length, limit,
             string.Join(", ", tags), kind?.ToString() ?? "any");
 
         var filter = new Filter();
@@ -130,7 +135,7 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
                 prefetch:
                 [
                     Prefetch(queryVector, null, activeFilter, Math.Max(limit * 4, MinCandidates)),
-                    Prefetch(SparseQuery(keywords), KeywordVector, activeFilter, Math.Max(limit * 4, MinCandidates)),
+                    Prefetch(Keywords(queryText, store.Current.Keywords.Language), KeywordVector, activeFilter, Math.Max(limit * 4, MinCandidates)),
                 ],
                 query: Fusion.Rrf,
                 limit: limit,
@@ -161,7 +166,7 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
             IntPayload(point.Payload, "first_page"),
             IntPayload(point.Payload, "last_page"))).ToList();
 
-        return new SearchResults(hits, hybrid);
+        return new SearchResults(hits, hybrid ? ScoreKind.Fusion : ScoreKind.Similarity);
     }
 
     // The chunks within radius of one hit, in document order, so a passage can be read in context.
@@ -272,18 +277,22 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
     }
 
     // "" names the default (unnamed) dense vector when it sits beside named ones.
-    private static Vectors HybridVectors(float[] dense, SparseText keywords) =>
+    private static Vectors HybridVectors(float[] dense, Document keywords) =>
         new Dictionary<string, Vector>
         {
             [""] = dense,
-            [KeywordVector] = (keywords.Values, keywords.Indices),
+            [KeywordVector] = keywords,
         };
 
-    private static Query SparseQuery(SparseText keywords) => new()
+    // Documents and queries must share the language, or their stems won't meet.
+    private static Document Keywords(string text, string language) => new()
     {
-        Nearest = new VectorInput
+        Text = text,
+        Model = KeywordModel,
+        Options =
         {
-            Sparse = new SparseVector { Values = { keywords.Values }, Indices = { keywords.Indices } },
+            ["language"] = language,
+            ["avg_len"] = AverageChunkWords,
         },
     };
 
@@ -329,8 +338,17 @@ public sealed class QdrantStore(QdrantClient client, ILogger<QdrantStore> logger
     }
 }
 
-// Hybrid scores come from rank fusion and only order hits; meaning-only scores are cosine similarities.
-public sealed record SearchResults(IReadOnlyList<SearchHit> Hits, bool Hybrid);
+public sealed record SearchResults(IReadOnlyList<SearchHit> Hits, ScoreKind ScoreKind);
+
+public enum ScoreKind
+{
+    // Cosine similarity, from a meaning-only search.
+    Similarity,
+    // Rank fusion of meaning and keyword matches, which only orders hits.
+    Fusion,
+    // A reranker's 0–1 judgement of how well the passage answers the query.
+    Relevance,
+}
 
 public sealed record SearchHit(
     float Score,

@@ -39,6 +39,10 @@ public static class CoreServices
             configuration.GetValue("Qdrant:Https", false),
             configuration["Qdrant:ApiKey"]));
         services.AddSingleton<QdrantStore>();
+        // Each request sets its own timeout from the reranker settings.
+        services.AddHttpClient(nameof(Reranker), client => client.Timeout = Timeout.InfiniteTimeSpan);
+        services.AddSingleton<Reranker>();
+        services.AddSingleton<SearchService>();
         // A factory rather than a scoped context: a Blazor Server circuit lives far longer than one unit of work.
         services.AddDbContextFactory<DatabaseContext>(options =>
             options.UseSqlite(configuration.GetConnectionString("Lantrn") ?? "Data Source=lantrn.db"));

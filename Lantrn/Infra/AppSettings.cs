@@ -16,6 +16,10 @@ public sealed class AppSettings
 
     public AssistantSettings Assistant { get; set; } = new();
 
+    public RerankerSettings Reranker { get; set; } = new();
+
+    public KeywordSettings Keywords { get; set; } = new();
+
     public AccessSettings Access { get; set; } = new();
 
     // The cached copy is shared by every circuit, so editors work on their own.
@@ -25,6 +29,8 @@ public sealed class AppSettings
         Embeddings = Embeddings.Copy(),
         Vision = Vision.Copy(),
         Assistant = Assistant.Copy(),
+        Reranker = Reranker.Copy(),
+        Keywords = Keywords.Copy(),
         Access = Access.Copy(),
     };
 }
@@ -37,6 +43,8 @@ public sealed class AppSettingsConfiguration : IEntityTypeConfiguration<AppSetti
         builder.ComplexProperty(s => s.Embeddings);
         builder.ComplexProperty(s => s.Vision);
         builder.ComplexProperty(s => s.Assistant);
+        builder.ComplexProperty(s => s.Reranker);
+        builder.ComplexProperty(s => s.Keywords);
         builder.ComplexProperty(s => s.Access);
     }
 }
@@ -122,4 +130,31 @@ public sealed class AssistantSettings : IEndpointSettings
     public int TimeoutSeconds { get; set; } = 120;
 
     public AssistantSettings Copy() => (AssistantSettings)MemberwiseClone();
+}
+
+// A cross-encoder that re-scores the top candidates against the query, served from a /rerank endpoint.
+public sealed class RerankerSettings : IEndpointSettings
+{
+    public bool Enabled { get; set; }
+
+    public string BaseUrl { get; set; } = string.Empty;
+
+    public string? ApiKey { get; set; }
+
+    public string Model { get; set; } = string.Empty;
+
+    // How many search candidates are re-scored before the top results are kept.
+    public int Candidates { get; set; } = 40;
+
+    public int TimeoutSeconds { get; set; } = 30;
+
+    public RerankerSettings Copy() => (RerankerSettings)MemberwiseClone();
+}
+
+public sealed class KeywordSettings
+{
+    // Qdrant's stemmer and stopword language for keyword matching. Only applies to documents embedded after a change.
+    public string Language { get; set; } = "english";
+
+    public KeywordSettings Copy() => (KeywordSettings)MemberwiseClone();
 }

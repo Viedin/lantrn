@@ -79,11 +79,12 @@ public sealed class WebsiteSync(
         var pages = await crawler.MapAsync(start, site.Scope ?? WebCrawler.DefaultScope(start), site.MaxPages, cancellationToken);
 
         var failed = 0;
-        foreach (var page in pages)
+        for (var i = 0; i < pages.Count; i++)
         {
+            var page = pages[i];
             try
             {
-                queue.ReportStep($"Fetching {page}");
+                queue.ReportStep($"Fetching page {i + 1} of {pages.Count}: {page}");
                 var fetched = await crawler.FetchAsync(page, cancellationToken);
                 // The URL is the source, so search hits point back at the page.
                 await EnqueueIfChangedAsync(site, new ExtractedFile(page.ToString(), fetched.FileName, fetched.Bytes, []), stored, cancellationToken);

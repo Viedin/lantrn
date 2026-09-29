@@ -7,9 +7,8 @@
 @using Lantrn.Infra
 @using Lantrn.Services
 
-@inject EmbeddingService Embeddings
+@inject SearchService Searcher
 @inject SearchAssistant Assistant
-@inject QdrantStore Qdrant
 @inject DocumentStore Documents
 @inject NavigationManager Navigation
 @inject IJSRuntime JS
@@ -85,7 +84,7 @@
 
             <div class="results-layout">
                 <ResultList Hits="hits" Snippets="snippets" Selected="selected" OnSelect="(int index) => Select(index)"
-                            Collection="@searchedCollection" Tags="searchedTags" Kind="searchedKind" Hybrid="hybrid"
+                            Collection="@searchedCollection" Tags="searchedTags" Kind="searchedKind" ScoreKind="scoreKind"
                             ElapsedMs="elapsedMs" CitedCount="citedCount" />
 
                 @if (SelectedHit is { } current)
@@ -137,7 +136,7 @@
     private IReadOnlyList<SearchHit>? hits;
     private IReadOnlyList<MarkupString> snippets = [];
     private string[] terms = [];
-    private bool hybrid;
+    private ScoreKind scoreKind;
     private string? error;
     private bool busy;
     private long elapsedMs;
@@ -301,16 +300,15 @@
         try
         {
             var tags = selectedTags.Order().ToList();
-            var vector = await Embeddings.EmbedQueryAsync(query);
-            var results = await Qdrant.SearchAsync(collection, query, vector, tags, kind, (ulong)limit);
+            var results = await Searcher.SearchAsync(collection, query, tags, kind, limit);
 
-            var queryTerms = KeywordEncoder.QueryTerms(query);
+            var queryTerms = SearchTerms.Of(query);
             terms = queryTerms.ToArray();
             snippets = results.Hits
                 .Select(hit => SnippetBuilder.Build(MarkdownRenderer.ToPlainText(hit.Content), queryTerms))
                 .ToList();
             hits = results.Hits;
-            hybrid = results.Hybrid;
+            scoreKind = results.ScoreKind;
             citedCount = Assistant.Enabled ? Assistant.SourceCount(hits.Count) : 0;
             searchedQuery = query;
             searchedTags = tags;
