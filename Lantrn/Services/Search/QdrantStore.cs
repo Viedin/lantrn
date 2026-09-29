@@ -12,7 +12,7 @@ namespace Lantrn.Services.Search;
 /// <summary>
 /// Writes chunks (content + embedding + heading metadata) into a Qdrant collection.
 /// </summary>
-public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogger<QdrantStore> logger)
+public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogger<QdrantStore> logger) : IQdrantStore
 {
     private const string TagsField = "tags";
     private const string DocumentIdField = "document_id";

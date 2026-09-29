@@ -16,7 +16,7 @@ namespace Lantrn.Services;
 /// </summary>
 public sealed partial class DocumentStore(
     IDbContextFactory<DatabaseContext> dbFactory,
-    QdrantStore qdrant,
+    IQdrantStore qdrant,
     IOptions<StorageOptions> storage,
     IHostEnvironment environment,
     ILogger<DocumentStore> logger)

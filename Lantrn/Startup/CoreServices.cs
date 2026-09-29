@@ -29,7 +29,7 @@ public static class CoreServices
         });
         services.AddTransient<ILinkExtractor>(provider => provider.GetRequiredService<GitHubExtractor>());
         services.AddSingleton<SettingsStore>();
-        services.AddSingleton<EmbeddingService>();
+        services.AddSingleton<IEmbeddingService, EmbeddingService>();
         services.AddSingleton<VisionOcrService>();
         services.AddSingleton<SearchAssistant>();
         services.AddSingleton<ModelCatalog>();
@@ -38,7 +38,7 @@ public static class CoreServices
             configuration.GetValue("Qdrant:Port", 6334),
             configuration.GetValue("Qdrant:Https", false),
             configuration["Qdrant:ApiKey"]));
-        services.AddSingleton<QdrantStore>();
+        services.AddSingleton<IQdrantStore, QdrantStore>();
         // Each request sets its own timeout from the reranker settings.
         services.AddHttpClient(nameof(Reranker), client => client.Timeout = Timeout.InfiniteTimeSpan);
         services.AddSingleton<Reranker>();
