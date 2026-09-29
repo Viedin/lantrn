@@ -286,7 +286,7 @@
         new Dictionary<string, object?>
         {
             ["q"] = string.IsNullOrWhiteSpace(q) ? null : q.Trim(),
-            ["collection"] = collection is null || collection.Id == Collection.DefaultId ? null : collection.Id.ToString(),
+            ["collection"] = collection?.Id.ToString(),
             ["tag"] = selectedTags.Count > 0 ? selectedTags.Order().ToArray() : null,
             ["kind"] = kind?.ToString().ToLowerInvariant(),
             ["limit"] = limit == DefaultLimit ? null : limit,

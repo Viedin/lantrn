@@ -42,10 +42,9 @@ else
     protected override void OnParametersSet() =>
         labels = Collections.ToDictionary(c => c.Id, c => CollectionLabels.Name(c, Collections, user));
 
-    // The requested collection (an id from the URL) when it is on offer, else the default one, else whichever comes first.
+    // The requested collection (an id from the URL) when it is on offer, else whichever comes first.
     public static CollectionSummary? Pick(IReadOnlyList<CollectionSummary> collections, string? requested) =>
         (Guid.TryParse(requested, out var id) ? collections.FirstOrDefault(c => c.Id == id) : null)
-            ?? collections.FirstOrDefault(c => c.Id == Collection.DefaultId)
             ?? collections.FirstOrDefault();
 
     // The posted value comes from the browser; only a collection on offer may be picked.

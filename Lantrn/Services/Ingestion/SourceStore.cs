@@ -3,34 +3,23 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Lantrn.Services.Ingestion;
 
-// The folders and websites that SourceSyncService keeps in step with their collections.
-public sealed class SourceStore(IDbContextFactory<DatabaseContext> dbFactory, DocumentStore documents, ILogger<SourceStore> logger)
+// The websites that SourceSyncService keeps in step with their collections.
+public sealed class SourceStore(IDbContextFactory<DatabaseContext> dbFactory)
 {
-    public async Task EnsureDocumentsFolderAsync(CancellationToken cancellationToken = default)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        if (await db.Sources.AsNoTracking().AnyAsync(s => s.Id == Source.DocumentsFolderId, cancellationToken))
-        {
-            return;
-        }
-
-        db.Sources.Add(new Source
-        {
-            Id = Source.DocumentsFolderId,
-            Kind = SourceKind.Folder,
-            CollectionId = Collection.DefaultId,
-            Location = documents.FolderPath,
-            CreatedAt = DateTime.UtcNow,
-        });
-        await db.SaveChangesAsync(cancellationToken);
-
-        logger.LogInformation("Added the documents folder as a source");
-    }
-
     public async Task<IReadOnlyList<Source>> ListAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         return await db.Sources.AsNoTracking().OrderBy(s => s.CreatedAt).ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<WebsiteSource>> ListWebsitesAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await db.Sources
+            .AsNoTracking()
+            .OrderBy(s => s.CreatedAt)
+            .Select(s => new WebsiteSource(s, db.Users.Where(u => u.Id == s.AddedById).Select(u => u.Email).FirstOrDefault()))
+            .ToListAsync(cancellationToken);
     }
 
     // Crawling the same site into the same collection again updates its source: two sources
@@ -43,20 +32,21 @@ public sealed class SourceStore(IDbContextFactory<DatabaseContext> dbFactory, Do
         IReadOnlyList<string> tags,
         IngestOptions chunking,
         TimeSpan? syncInterval,
+        string addedById,
         CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var location = start.ToString();
         var source = await db.Sources.SingleOrDefaultAsync(
-            s => s.Kind == SourceKind.Website && s.CollectionId == collectionId && s.Location == location, cancellationToken);
+            s => s.CollectionId == collectionId && s.Location == location, cancellationToken);
 
         if (source is null)
         {
             source = new Source
             {
-                Kind = SourceKind.Website,
                 CollectionId = collectionId,
                 Location = location,
+                AddedById = addedById,
                 CreatedAt = DateTime.UtcNow,
             };
             db.Sources.Add(source);
@@ -67,6 +57,7 @@ public sealed class SourceStore(IDbContextFactory<DatabaseContext> dbFactory, Do
         source.Tags = [.. tags];
         source.Chunking = chunking.Clone();
         source.SyncInterval = syncInterval;
+        source.AddedById = addedById;
         await db.SaveChangesAsync(cancellationToken);
 
         return source;
@@ -85,12 +76,25 @@ public sealed class SourceStore(IDbContextFactory<DatabaseContext> dbFactory, Do
     // The documents stay; they just stop being synced.
     public async Task RemoveAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        if (id == Source.DocumentsFolderId)
-        {
-            throw new InvalidOperationException("The documents folder is always synced.");
-        }
-
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         await db.Sources.Where(s => s.Id == id).ExecuteDeleteAsync(cancellationToken);
     }
+
+    // A removed admin's websites keep syncing for whoever takes over their collections.
+    public async Task TransferAsync(string fromUserId, string toUserId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        await db.Sources
+            .Where(s => s.AddedById == fromUserId)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.AddedById, toUserId), cancellationToken);
+    }
+
+    // A removed user's websites stop syncing; DocumentStore deletes the pages they brought in.
+    public async Task RemoveAddedByAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        await db.Sources.Where(s => s.AddedById == userId).ExecuteDeleteAsync(cancellationToken);
+    }
 }
+
+public sealed record WebsiteSource(Source Source, string? AddedByEmail);

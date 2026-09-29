@@ -25,8 +25,8 @@ features:
     details: Optionally let a chat model answer from the results, citing every passage it used.
   - title: Bring any model
     details: Works with any OpenAI-compatible API — OpenAI, LM Studio, Ollama, vLLM.
-  - title: Drop-in folder
-    details: Put files in a folder and they're searchable within a minute. Delete them and they're gone.
+  - title: Private or shared
+    details: Keep a collection to yourself, or make it public so everyone can search it and add to it.
   - title: Built for teams
     details: Admins, users and invite links. Or turn on public search and share it with everyone.
 ---
@@ -41,8 +41,8 @@ docker compose up -d
 
 1. Open http://localhost:8080 and register — the first account is the admin.
 2. Point **Settings → Embeddings** at your model.
-3. Drop files into `documents/` and start searching.
+3. Create a collection, upload files on the **Ingest** page, and start searching.
 
-Or upload them on the **Ingest** page. See [Adding documents](/guide/adding-documents) for all the options.
+See [Adding documents](/guide/adding-documents) for all the options.
 
 [Read the full guide →](/guide/getting-started)

@@ -53,4 +53,8 @@ public static class CollectionAccessRules
     }
 
     public static string? UserId(ClaimsPrincipal user) => user.FindFirstValue(ClaimTypes.NameIdentifier);
+
+    // For what only signed-in people can do, such as adding documents, which is always credited to someone.
+    public static string SignedInUserId(ClaimsPrincipal user) =>
+        UserId(user) ?? throw new InvalidOperationException("Only signed-in users can do this.");
 }

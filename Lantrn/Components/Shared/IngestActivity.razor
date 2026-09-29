@@ -1,20 +1,18 @@
 @implements IDisposable
 
 @inject IngestQueue Queue
+@inject SourceSyncService Sync
 
-@* The ingest queue as it runs. It keeps working when the page is closed, so this is only a view of it.
-   The queue is shared, so its totals and Stop are for admins; users see only the jobs for collections they contribute to. *@
+@* The viewer's own jobs as the queue works through them. It keeps working when the page is closed, so this is only a view of it.
+   The queue is shared, so everyone sees and stops only the jobs they queued and the crawls they started. *@
 @if (jobs.Count > 0)
 {
-    @if (isAdmin)
-    {
-        <IngestProgress Tally="Queue.Tally" Busy="busy" OnStop="Queue.StopAll" />
-    }
+    <IngestProgress Tally="IngestTally.Of(jobs)" Busy="jobs.Any(j => !j.IsFinished)" OnStop="Stop" />
     <IngestResults Jobs="jobs" CollectionNames="names" />
 }
 
 @code {
-    // The collections the viewer may contribute to; their jobs are the ones shown.
+    // The collections the viewer may contribute to, for naming each job's collection.
     [Parameter, EditorRequired]
     public IReadOnlyList<CollectionSummary> Collections { get; set; } = [];
 
@@ -24,13 +22,12 @@
     private IReadOnlyList<IngestJob> jobs = [];
     private Dictionary<Guid, string> names = [];
     private ClaimsPrincipal user = new();
-    private bool busy;
-    private bool isAdmin;
+    private string? userId;
 
     protected override async Task OnInitializedAsync()
     {
         user = (await AuthenticationState).User;
-        isAdmin = user.IsInRole(Roles.Admin);
+        userId = CollectionAccessRules.UserId(user);
         Queue.Changed += OnQueueChanged;
     }
 
@@ -40,10 +37,14 @@
         Snapshot();
     }
 
-    private void Snapshot()
+    private bool IsMine(IngestJob job) => job.Request.AddedById == userId;
+
+    private void Snapshot() => jobs = Queue.Recent.Where(IsMine).ToList();
+
+    private void Stop()
     {
-        jobs = isAdmin ? Queue.Recent : Queue.Recent.Where(j => names.ContainsKey(j.Request.CollectionId)).ToList();
-        busy = Queue.IsBusy;
+        Queue.Stop(IsMine);
+        Sync.Stop((_, startedById) => startedById == userId);
     }
 
     private void OnQueueChanged() => _ = InvokeAsync(() =>
@@ -56,6 +57,6 @@
     public void Dispose()
     {
         Queue.Changed -= OnQueueChanged;
-        Queue.ClearIfIdle();
+        Queue.ClearIfIdle(IsMine);
     }
 }

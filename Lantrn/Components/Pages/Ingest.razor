@@ -158,7 +158,8 @@
         }
 
         // The list was read when the page opened; the collection may have been made private or deleted since.
-        if (!await Documents.CanAccessAsync(collection.Id, (await AuthenticationState).User, CollectionAccess.Contribute))
+        var user = (await AuthenticationState).User;
+        if (!await Documents.CanAccessAsync(collection.Id, user, CollectionAccess.Contribute))
         {
             error = $"You can no longer add to '{collection.Name}'. Reload the page to pick another collection.";
             return;
@@ -174,7 +175,8 @@
             try
             {
                 await using var stream = file.OpenReadStream(IngestQueue.MaxFileSize, disposed.Token);
-                await Queue.EnqueueUploadAsync(new IngestRequest(collection.Id, file.Name, file.Name, tags, options.Clone()), stream, disposed.Token);
+                await Queue.EnqueueUploadAsync(new IngestRequest(
+                    collection.Id, file.Name, file.Name, tags, options.Clone(), CollectionAccessRules.SignedInUserId(user)), stream, disposed.Token);
             }
             catch (Exception ex) when (!disposed.IsCancellationRequested)
             {

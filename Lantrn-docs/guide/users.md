@@ -14,7 +14,7 @@ The first account ever registered becomes the admin. There must always be at lea
 
 Each collection is public or private. Private collections can only be seen by their owner and the admins. Public collections are shared: every user can search them and add, retag or remove their documents. Only the owner and the admins can change a collection's visibility, re-embed, clear or delete it.
 
-Names are unique per owner, so two users can each have a collection called `notes`. Collections synced from the documents folder are public and managed by the admins. Removing a user deletes every collection they own, with all its documents. Documents they added to someone else's public collection stay.
+Names are unique per owner, so two users can each have a collection called `notes`. Every document and crawled website records who added it. Removing a user deletes every collection they own, and everything they added to anyone else's. Removing an admin instead hands everything they own and added to the admin who removed them, since an admin's collections belong to the workspace.
 
 ## Inviting users
 

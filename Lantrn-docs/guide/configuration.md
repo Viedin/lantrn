@@ -59,7 +59,7 @@ These are only set through configuration, not the Settings page.
 | Key                         | Default                 | What it is                                |
 | --------------------------- | ----------------------- | ----------------------------------------- |
 | `ConnectionStrings__Lantrn` | `Data Source=lantrn.db` | SQLite database                           |
-| `Storage__DataPath`         | `data`                  | Originals, images, keys, documents folder |
+| `Storage__DataPath`         | `data`                  | Originals, images, keys, upload inbox     |
 | `Qdrant__Host`              | `localhost`             |                                           |
 | `Qdrant__Port`              | `6334`                  | gRPC port                                 |
 | `Qdrant__Https`             | `false`                 |                                           |

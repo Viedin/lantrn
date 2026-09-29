@@ -22,8 +22,11 @@ public sealed class Document
     // SHA-256 of the ingested bytes, so a sync can skip what hasn't changed.
     public string? ContentHash { get; set; }
 
-    // The folder or website this document is synced from; null for uploads.
+    // The website this document is synced from; null for uploads.
     public Guid? SourceId { get; set; }
+
+    // Whoever last uploaded it, or added the website it came from.
+    public required string AddedById { get; set; }
 
     public int ChunkCount { get; set; }
 
@@ -55,5 +58,11 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
             .WithMany()
             .HasForeignKey(d => d.SourceId)
             .OnDelete(DeleteBehavior.SetNull);
+
+        // AccountService deletes a removed user's documents with their vectors; this only covers one stored meanwhile.
+        builder.HasOne<ApplicationUser>()
+            .WithMany()
+            .HasForeignKey(d => d.AddedById)
+            .OnDelete(DeleteBehavior.Cascade);
     }
 }

@@ -4,6 +4,7 @@
 @using Lantrn.Services
 
 @inject DocumentStore Documents
+@inject AccountService Accounts
 
 <PageTitle>@(document?.Source ?? "Document")</PageTitle>
 
@@ -33,7 +34,13 @@ else
             {
                 <span class="metric-pill" title="Text read from an image"><i class="bi bi-image" aria-hidden="true"></i> OCR</span>
             }
-            <span>Ingested @document.IngestedAt.ToLocalTime().ToString("g")</span>
+            <span>
+                Ingested @document.IngestedAt.ToLocalTime().ToString("g")
+                @if (addedBy is not null)
+                {
+                    <text>by @addedBy</text>
+                }
+            </span>
             @if (Uri.TryCreate(document.Source, UriKind.Absolute, out var url) && url.Scheme is "http" or "https")
             {
                 <a href="@url" target="_blank" rel="noopener noreferrer">
@@ -101,6 +108,7 @@ else
 
     private Document? document;
     private CollectionSummary? collection;
+    private string? addedBy;
     private bool canEdit;
 
     private string SelfHref => $"documents/{Id}";
@@ -120,5 +128,9 @@ else
             document = null;
         }
         canEdit = collection?.Allows(user, CollectionAccess.Contribute) == true;
+        // Guests aren't told who added anything, so there is nothing to look up for them.
+        addedBy = document is null || user.Identity?.IsAuthenticated != true
+            ? null
+            : CollectionLabels.Person(document.AddedById, await Accounts.GetEmailAsync(document.AddedById), user);
     }
 }

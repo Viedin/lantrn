@@ -52,7 +52,6 @@ public static class CoreServices
         services.AddSingleton<IngestQueue>();
         services.AddHostedService<IngestWorker>();
         services.AddSingleton<SourceStore>();
-        services.AddSingleton<FolderSync>();
         services.AddSingleton<WebsiteSync>();
         services.AddSingleton<SourceSyncService>();
         services.AddHostedService(provider => provider.GetRequiredService<SourceSyncService>());
@@ -75,8 +74,6 @@ public static class CoreServices
         }
 
         await app.Services.GetRequiredService<SettingsStore>().LoadAsync();
-        await app.Services.GetRequiredService<DocumentStore>().EnsureDefaultCollectionAsync();
-        await app.Services.GetRequiredService<SourceStore>().EnsureDocumentsFolderAsync();
         await app.Services.GetRequiredService<AccountService>().EnsureAdminAsync();
     }
 }

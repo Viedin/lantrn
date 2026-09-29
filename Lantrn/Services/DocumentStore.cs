@@ -24,11 +24,7 @@ public sealed partial class DocumentStore(
     private readonly string originalsPath = Path.Combine(
         Path.GetFullPath(storage.Value.DataPath, environment.ContentRootPath), "originals");
 
-    // Files placed here are kept in sync by SourceSyncService: top-level folders become collections, the rest goes to the default one.
-    public string FolderPath { get; } = Path.Combine(
-        Path.GetFullPath(storage.Value.DataPath, environment.ContentRootPath), "documents");
-
-    // Lowercase, so names read alike wherever they are shown and a documents folder maps onto one.
+    // Lowercase, so names read alike wherever they are shown.
     [GeneratedRegex("^[a-z0-9][a-z0-9_-]{0,62}$")]
     private static partial Regex CollectionNamePattern();
 
@@ -43,20 +39,6 @@ public sealed partial class DocumentStore(
             .Select(tag => tag.ToLowerInvariant())
             .Distinct()
             .ToList();
-
-    // The default collection always exists: the documents folder syncs into it, so it can be cleared but not deleted.
-    public async Task EnsureDefaultCollectionAsync(CancellationToken cancellationToken = default)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        if (await db.Collections.AsNoTracking().AnyAsync(c => c.Id == Collection.DefaultId, cancellationToken))
-        {
-            return;
-        }
-
-        db.Collections.Add(new Collection { Id = Collection.DefaultId, Name = Collection.DefaultName, CreatedAt = DateTime.UtcNow });
-        await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Created the default collection '{Collection}'", Collection.DefaultName);
-    }
 
     public async Task<IReadOnlyList<CollectionSummary>> ListCollectionsAsync(
         ClaimsPrincipal user,
@@ -92,22 +74,12 @@ public sealed partial class DocumentStore(
         return await db.Collections.AsNoTracking().WhereAllowed(user, access).AnyAsync(c => c.Id == id, cancellationToken);
     }
 
-    // The collections the admins manage, by name, which is how the documents folder refers to them.
-    public async Task<Dictionary<string, Guid>> ListManagedCollectionsAsync(CancellationToken cancellationToken = default)
-    {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        return await db.Collections
-            .AsNoTracking()
-            .Where(c => c.OwnerId == null)
-            .ToDictionaryAsync(c => c.Name, c => c.Id, cancellationToken);
-    }
-
     // The Qdrant side is created on the first push, once the embedding size is known.
     public async Task<Guid> CreateCollectionAsync(
         string name,
         string? description,
         bool isPrivate,
-        string? ownerId,
+        string ownerId,
         CancellationToken cancellationToken = default)
     {
         if (!IsValidCollectionName(name))
@@ -119,8 +91,7 @@ public sealed partial class DocumentStore(
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         if (await db.Collections.AsNoTracking().AnyAsync(c => c.OwnerId == ownerId && c.Name == name, cancellationToken))
         {
-            throw new InvalidOperationException(
-                ownerId is null ? $"The admins already have a collection named '{name}'." : $"You already have a collection named '{name}'.");
+            throw new InvalidOperationException($"You already have a collection named '{name}'.");
         }
 
         var collection = new Collection
@@ -151,11 +122,6 @@ public sealed partial class DocumentStore(
 
     public async Task DeleteCollectionAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        if (id == Collection.DefaultId)
-        {
-            throw new InvalidOperationException($"The '{Collection.DefaultName}' collection can be cleared but not deleted.");
-        }
-
         await ClearCollectionAsync(id, cancellationToken);
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
@@ -164,19 +130,68 @@ public sealed partial class DocumentStore(
         logger.LogInformation("Deleted collection {CollectionId}", id);
     }
 
-    // A removed user's content goes with them, vectors and kept originals included.
-    public async Task DeleteCollectionsOwnedByAsync(string ownerId, CancellationToken cancellationToken = default)
+    // A removed admin's collections are the workspace's, so they and everything the admin added are handed to another admin.
+    // Names are unique per owner, so a clash gets a number: "docs" becomes "docs-2".
+    public async Task TransferContentAsync(string fromUserId, string toUserId, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var ids = await db.Collections
+        var taken = (await db.Collections
             .AsNoTracking()
-            .Where(c => c.OwnerId == ownerId)
+            .Where(c => c.OwnerId == toUserId)
+            .Select(c => c.Name)
+            .ToListAsync(cancellationToken)).ToHashSet();
+
+        foreach (var collection in await db.Collections.Where(c => c.OwnerId == fromUserId).ToListAsync(cancellationToken))
+        {
+            collection.OwnerId = toUserId;
+            collection.Name = FreeName(collection.Name, taken);
+            taken.Add(collection.Name);
+        }
+        await db.SaveChangesAsync(cancellationToken);
+
+        await db.Documents
+            .Where(d => d.AddedById == fromUserId)
+            .ExecuteUpdateAsync(d => d.SetProperty(x => x.AddedById, toUserId), cancellationToken);
+
+        logger.LogInformation("Handed the content of {FromUserId} to {ToUserId}", fromUserId, toUserId);
+    }
+
+    private static string FreeName(string name, HashSet<string> taken)
+    {
+        var candidate = name;
+        for (var i = 2; taken.Contains(candidate); i++)
+        {
+            var suffix = $"-{i}";
+            candidate = name[..Math.Min(name.Length, 63 - suffix.Length)] + suffix;
+        }
+        return candidate;
+    }
+
+    // A removed user's content goes with them, vectors and kept originals included: the collections they own,
+    // and what they added to anyone else's.
+    public async Task DeleteContentOfAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var collections = await db.Collections
+            .AsNoTracking()
+            .Where(c => c.OwnerId == userId)
             .Select(c => c.Id)
             .ToListAsync(cancellationToken);
 
-        foreach (var id in ids)
+        foreach (var id in collections)
         {
             await DeleteCollectionAsync(id, cancellationToken);
+        }
+
+        var documents = await db.Documents
+            .AsNoTracking()
+            .Where(d => d.AddedById == userId)
+            .Select(d => d.Id)
+            .ToListAsync(cancellationToken);
+
+        foreach (var id in documents)
+        {
+            await DeleteAsync(id, cancellationToken);
         }
     }
 
@@ -207,7 +222,7 @@ public sealed partial class DocumentStore(
     public Task DeleteVectorsAsync(Guid collectionId, CancellationToken cancellationToken = default) =>
         qdrant.DeleteCollectionAsync(collectionId, cancellationToken);
 
-    // The documents a folder or website brought in, with the hash of what they were embedded from.
+    // The documents a website brought in, with the hash of what they were embedded from.
     public async Task<IReadOnlyList<SyncedDocument>> ListSourceDocumentsAsync(Guid sourceId, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
@@ -245,7 +260,9 @@ public sealed partial class DocumentStore(
                 d.ChunkCount,
                 d.Markdown.Length,
                 d.Kind,
-                d.Tags.OrderBy(t => t.Name).Select(t => t.Name).ToList()))
+                d.Tags.OrderBy(t => t.Name).Select(t => t.Name).ToList(),
+                d.AddedById,
+                db.Users.Where(u => u.Id == d.AddedById).Select(u => u.Email).FirstOrDefault()))
             .ToListAsync(cancellationToken);
     }
 
@@ -352,6 +369,7 @@ public sealed partial class DocumentStore(
         string source,
         IngestResult result,
         IReadOnlyList<string> tags,
+        string addedById,
         byte[]? original = null,
         string? contentHash = null,
         Guid? sourceId = null,
@@ -359,7 +377,7 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
-        // Queued jobs can outlive their collection or source. Checked before Qdrant is touched,
+        // Queued jobs can outlive their collection, source or uploader. Checked before Qdrant is touched,
         // since the save below would fail only after the points were written.
         if (!await db.Collections.AsNoTracking().AnyAsync(c => c.Id == collectionId, cancellationToken))
         {
@@ -367,7 +385,11 @@ public sealed partial class DocumentStore(
         }
         if (sourceId is { } id && !await db.Sources.AsNoTracking().AnyAsync(s => s.Id == id, cancellationToken))
         {
-            throw new InvalidOperationException("The folder or website this came from is no longer synced.");
+            throw new InvalidOperationException("The website this came from is no longer synced.");
+        }
+        if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == addedById, cancellationToken))
+        {
+            throw new InvalidOperationException("The account that added this no longer exists.");
         }
 
         var document = await db.Documents
@@ -376,7 +398,7 @@ public sealed partial class DocumentStore(
 
         if (document is null)
         {
-            document = new Document { CollectionId = collectionId, Source = source, Markdown = result.Markdown };
+            document = new Document { CollectionId = collectionId, Source = source, Markdown = result.Markdown, AddedById = addedById };
             db.Documents.Add(document);
         }
 
@@ -384,6 +406,7 @@ public sealed partial class DocumentStore(
         document.Kind = result.Kind;
         document.ContentHash = contentHash;
         document.SourceId = sourceId;
+        document.AddedById = addedById;
         document.ChunkCount = await qdrant.ReplaceDocumentAsync(
             collectionId, source, document.Id, result.Kind, result.Chunks, tags, cancellationToken);
         document.IngestedAt = DateTime.UtcNow;
@@ -479,6 +502,7 @@ public sealed partial class DocumentStore(
             c.IsPrivate,
             c.OwnerId,
             db.Users.Where(u => u.Id == c.OwnerId).Select(u => u.Email).FirstOrDefault(),
+            db.UserRoles.Any(ur => ur.UserId == c.OwnerId && db.Roles.Any(r => r.Id == ur.RoleId && r.Name == Roles.Admin)),
             c.CreatedAt,
             c.Documents.Count,
             c.Documents.Sum(d => d.ChunkCount),
@@ -490,8 +514,9 @@ public sealed record CollectionSummary(
     string Name,
     string? Description,
     bool IsPrivate,
-    string? OwnerId,
+    string OwnerId,
     string? OwnerEmail,
+    bool OwnerIsAdmin,
     DateTime CreatedAt,
     int DocumentCount,
     int ChunkCount,
@@ -504,7 +529,9 @@ public sealed record DocumentSummary(
     int ChunkCount,
     int Characters,
     DocumentKind Kind,
-    IReadOnlyList<string> Tags);
+    IReadOnlyList<string> Tags,
+    string AddedById,
+    string? AddedByEmail);
 
 public sealed record TagCount(string Name, int Documents);
 

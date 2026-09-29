@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using Lantrn.Infra;
 using Lantrn.Services;
 using Lantrn.Services.Accounts;
 using Microsoft.AspNetCore.Http.HttpResults;
@@ -33,11 +32,8 @@ public static class CollectionEndpoints
         group.MapDelete("/{id:guid}", DeleteAsync)
             .WithName("DeleteCollection")
             .WithSummary("Delete a collection")
-            .WithDescription(
-                $"Deletes the collection with all its documents, vectors and kept originals. The '{Collection.DefaultName}' " +
-                "collection is synced from the documents folder and can be cleared but not deleted.")
-            .ProducesProblem(StatusCodes.Status404NotFound)
-            .ProducesProblem(StatusCodes.Status409Conflict);
+            .WithDescription("Deletes the collection with all its documents, vectors and kept originals.")
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         group.MapDelete("/{id:guid}/documents", ClearAsync)
             .WithName("ClearCollection")
@@ -74,7 +70,7 @@ public static class CollectionEndpoints
         try
         {
             id = await documents.CreateCollectionAsync(
-                request.Name, request.Description, request.IsPrivate, CollectionAccessRules.UserId(user), cancellationToken);
+                request.Name, request.Description, request.IsPrivate, CollectionAccessRules.SignedInUserId(user), cancellationToken);
         }
         catch (InvalidOperationException ex)
         {
@@ -88,10 +84,6 @@ public static class CollectionEndpoints
     private static async Task<Results<NoContent, ProblemHttpResult>> DeleteAsync(
         Guid id, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken)
     {
-        if (id == Collection.DefaultId)
-        {
-            return ApiProblems.Conflict($"The '{Collection.DefaultName}' collection can be cleared but not deleted.");
-        }
         if (!await documents.CanAccessAsync(id, user, CollectionAccess.Manage, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);

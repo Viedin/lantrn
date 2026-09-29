@@ -164,8 +164,20 @@
 
 <DeleteConfirmModal Show="deleting is not null" Busy="busy" Title="Delete account?"
                     OnConfirm="DeleteAsync" OnCancel="() => deleting = null">
-    Remove <strong>@deleting?.Email</strong> and every collection they own, with all its documents? They are signed out and
-    can only come back with a new invite. This can't be undone.
+    @if (deleting?.IsAdmin == true)
+    {
+        <text>
+            Remove <strong>@deleting.Email</strong>? Their collections, documents and websites are handed to you, and
+            collections whose name you already use get a number added. They are signed out and can only come back with a new invite.
+        </text>
+    }
+    else
+    {
+        <text>
+            Remove <strong>@deleting?.Email</strong>, every collection they own, and every document and website they added to
+            other collections? They are signed out and can only come back with a new invite. This can't be undone.
+        </text>
+    }
 </DeleteConfirmModal>
 
 @code {
@@ -238,7 +250,7 @@
 
     private Task DeleteAsync() => RunAsync(async () =>
     {
-        ReportFailure(await Accounts.DeleteUserAsync(deleting!.Id));
+        ReportFailure(await Accounts.DeleteUserAsync(deleting!.Id, currentUserId!));
         deleting = null;
     }, "Deleting a user");
 

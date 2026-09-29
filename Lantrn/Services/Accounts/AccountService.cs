@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Lantrn.Infra;
+using Lantrn.Services.Ingestion;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 
@@ -16,6 +17,9 @@ public sealed class AccountService(
     IServiceScopeFactory scopeFactory,
     IDbContextFactory<DatabaseContext> dbFactory,
     DocumentStore documents,
+    SourceStore sources,
+    IngestQueue queue,
+    SourceSyncService sync,
     ILogger<AccountService> logger)
 {
     public static readonly TimeSpan InvitationLifetime = TimeSpan.FromDays(7);
@@ -54,6 +58,12 @@ public sealed class AccountService(
         return await db.Users.AsNoTracking().AnyAsync(cancellationToken);
     }
 
+    public async Task<string?> GetEmailAsync(string userId, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await db.Users.AsNoTracking().Where(u => u.Id == userId).Select(u => u.Email).SingleOrDefaultAsync(cancellationToken);
+    }
+
     public async Task<IReadOnlyList<UserSummary>> ListUsersAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
@@ -90,7 +100,8 @@ public sealed class AccountService(
         return result;
     }
 
-    public async Task<IdentityResult> DeleteUserAsync(string userId)
+    // A removed admin's content is the workspace's, so it goes to the admin removing them; a user's content is deleted.
+    public async Task<IdentityResult> DeleteUserAsync(string userId, string removedById)
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
@@ -99,13 +110,29 @@ public sealed class AccountService(
         {
             return IdentityResult.Success;
         }
-        if (await users.IsInRoleAsync(user, Roles.Admin) && (await users.GetUsersInRoleAsync(Roles.Admin)).Count <= 1)
+
+        var admin = await users.IsInRoleAsync(user, Roles.Admin);
+        if (admin && (await users.GetUsersInRoleAsync(Roles.Admin)).Count <= 1)
         {
             return Failed("The last admin can't be removed.");
         }
 
-        // Through the store rather than the cascading foreign key, so their vectors and kept originals go too.
-        await documents.DeleteCollectionsOwnedByAsync(user.Id);
+        // Their queued jobs and running crawls would only fail once they are gone, after doing all the work.
+        queue.Stop(j => j.Request.AddedById == user.Id);
+        sync.Stop((site, startedById) => startedById == user.Id || site.AddedById == user.Id);
+
+        if (admin)
+        {
+            await sources.TransferAsync(user.Id, removedById);
+            await documents.TransferContentAsync(user.Id, removedById);
+        }
+        else
+        {
+            // Websites first, so a sync can't bring their pages back. Documents go through the store rather than the
+            // foreign keys, so their vectors and kept originals go too.
+            await sources.RemoveAddedByAsync(user.Id);
+            await documents.DeleteContentOfAsync(user.Id);
+        }
 
         var result = await users.DeleteAsync(user);
         if (result.Succeeded)

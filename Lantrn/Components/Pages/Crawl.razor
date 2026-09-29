@@ -99,13 +99,14 @@
                     <tr>
                         <th>Website</th>
                         <th>Collection</th>
+                        <th>Added by</th>
                         <th>Keep in sync</th>
                         <th>Last crawled</th>
                         <th></th>
                     </tr>
                 </thead>
                 <tbody>
-                    @foreach (var site in websites)
+                    @foreach (var (site, addedByEmail) in websites)
                     {
                         <tr @key="site.Id">
                             <td class="text-break">
@@ -116,12 +117,17 @@
                                 }
                             </td>
                             <td><a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@site.CollectionId">@CollectionName(site)</a></td>
+                            <td class="text-break">@CollectionLabels.Person(site.AddedById, addedByEmail, user)</td>
                             <td>@ToSchedule(site.SyncInterval)</td>
                             <td>
                                 @if (Sync.IsSyncing(site.Id))
                                 {
                                     <span class="spinner-border spinner-border-sm me-1" aria-hidden="true"></span>
                                     <span>Crawling…</span>
+                                    @if (Sync.StepOf(site.Id) is { } step)
+                                    {
+                                        <div class="small text-truncate">@step</div>
+                                    }
                                 }
                                 else
                                 {
@@ -172,7 +178,7 @@
     private readonly IngestOptions options = new();
     private IReadOnlyList<CollectionSummary> collections = [];
     private CollectionSummary? collection;
-    private IReadOnlyList<Source> websites = [];
+    private IReadOnlyList<WebsiteSource> websites = [];
 
     [SupplyParameterFromQuery(Name = "collection")]
     public string? CollectionParameter { get; set; }
@@ -180,6 +186,7 @@
     protected override async Task OnInitializedAsync()
     {
         Sync.Changed += OnSyncChanged;
+        Sync.StepChanged += OnSyncStepChanged;
         user = (await AuthenticationState).User;
         collections = await Documents.ListCollectionsAsync(user, CollectionAccess.Contribute);
         collection = CollectionSelect.Pick(collections, CollectionParameter);
@@ -218,8 +225,9 @@
         try
         {
             var site = await Sources.SaveWebsiteAsync(
-                collection.Id, start, prefix, maxPages, DocumentStore.ParseTags(tagsInput), options, ToInterval(schedule));
-            Sync.SyncNow(site);
+                collection.Id, start, prefix, maxPages, DocumentStore.ParseTags(tagsInput), options, ToInterval(schedule),
+                CollectionAccessRules.SignedInUserId(user));
+            Sync.SyncNow(site, CollectionAccessRules.SignedInUserId(user));
             await LoadWebsitesAsync();
         }
         catch (Exception ex)
@@ -233,7 +241,7 @@
     {
         if (await StillAllowedAsync(site.CollectionId))
         {
-            Sync.SyncNow(site);
+            Sync.SyncNow(site, CollectionAccessRules.SignedInUserId(user));
         }
     }
 
@@ -261,18 +269,21 @@
     }
 
     private async Task LoadWebsitesAsync() =>
-        websites = (await Sources.ListAsync())
-            .Where(s => s.Kind == SourceKind.Website && collections.Any(c => c.Id == s.CollectionId))
+        websites = (await Sources.ListWebsitesAsync())
+            .Where(w => collections.Any(c => c.Id == w.Source.CollectionId))
             .ToList();
 
     private string CollectionName(Source site) =>
         CollectionLabels.Name(collections.First(c => c.Id == site.CollectionId), collections, user);
 
+    // Only a crawl starting or finishing changes the list; a step just needs drawing.
     private void OnSyncChanged() => _ = InvokeAsync(async () =>
     {
         await LoadWebsitesAsync();
         StateHasChanged();
     });
+
+    private void OnSyncStepChanged() => _ = InvokeAsync(StateHasChanged);
 
     private static TimeSpan? ToInterval(Schedule schedule) => schedule switch
     {
@@ -284,5 +295,9 @@
     private static string ToSchedule(TimeSpan? interval) =>
         interval is null ? "Never" : interval == TimeSpan.FromDays(1) ? "Daily" : interval == TimeSpan.FromDays(7) ? "Weekly" : $"Every {interval}";
 
-    public void Dispose() => Sync.Changed -= OnSyncChanged;
+    public void Dispose()
+    {
+        Sync.Changed -= OnSyncChanged;
+        Sync.StepChanged -= OnSyncStepChanged;
+    }
 }

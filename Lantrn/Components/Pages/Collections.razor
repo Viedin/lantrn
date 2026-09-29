@@ -127,20 +127,10 @@ else
                                     </a>
                                     @if (collection.Allows(user, CollectionAccess.Manage))
                                     {
-                                        @if (collection.Id == Collection.DefaultId)
-                                        {
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingClear = collection"
-                                                    title="Clear collection" aria-label="Clear @collection.Name">
-                                                <i class="bi bi-eraser" aria-hidden="true"></i>
-                                            </button>
-                                        }
-                                        else
-                                        {
-                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingDelete = collection"
-                                                    title="Delete collection" aria-label="Delete @collection.Name">
-                                                <i class="bi bi-trash" aria-hidden="true"></i>
-                                            </button>
-                                        }
+                                        <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingDelete = collection"
+                                                title="Delete collection" aria-label="Delete @collection.Name">
+                                            <i class="bi bi-trash" aria-hidden="true"></i>
+                                        </button>
                                     }
                                 </td>
                             </tr>
@@ -155,12 +145,6 @@ else
 <DeleteConfirmModal Show="@(pendingDelete is not null)" Busy="busy" Title="Delete collection?"
                      OnConfirm="DeleteAsync" OnCancel="() => pendingDelete = null">
     Delete <strong>@pendingDelete?.Name</strong> and its @pendingDelete?.DocumentCount.ToString("N0") documents and vectors? This can't be undone.
-</DeleteConfirmModal>
-
-<DeleteConfirmModal Show="@(pendingClear is not null)" Busy="busy" Title="Clear collection?"
-                     OnConfirm="ClearAsync" OnCancel="() => pendingClear = null">
-    Remove all @pendingClear?.DocumentCount.ToString("N0") documents and vectors from <strong>@pendingClear?.Name</strong>?
-    Files in the documents folder are added back on the next sync.
 </DeleteConfirmModal>
 
 @code {
@@ -183,7 +167,6 @@ else
     private string newDescription = string.Empty;
     private Visibility newVisibility = Visibility.Private;
     private CollectionSummary? pendingDelete;
-    private CollectionSummary? pendingClear;
     private string? error;
     private bool busy;
 
@@ -206,7 +189,7 @@ else
         .Where(Matches)
         .ToList();
 
-    // The owner is searchable as shown, so "you" and "admins" find those collections too.
+    // The owner is searchable as shown, so "you" and "admin" find those collections too.
     private bool Matches(CollectionSummary collection)
     {
         if (string.IsNullOrWhiteSpace(filter))
@@ -227,7 +210,7 @@ else
 
         try
         {
-            await Documents.CreateCollectionAsync(newName.Trim(), newDescription, newVisibility == Visibility.Private, CollectionAccessRules.UserId(user));
+            await Documents.CreateCollectionAsync(newName.Trim(), newDescription, newVisibility == Visibility.Private, CollectionAccessRules.SignedInUserId(user));
             newName = string.Empty;
             newDescription = string.Empty;
             await LoadAsync();
@@ -261,29 +244,6 @@ else
         finally
         {
             pendingDelete = null;
-            busy = false;
-        }
-    }
-
-    private async Task ClearAsync()
-    {
-        var id = pendingClear!.Id;
-        busy = true;
-        error = null;
-
-        try
-        {
-            await Documents.ClearCollectionAsync(id);
-            await LoadAsync();
-        }
-        catch (Exception ex)
-        {
-            Log.LogError(ex, "Clearing collection {CollectionId} failed", id);
-            error = ex.Message;
-        }
-        finally
-        {
-            pendingClear = null;
             busy = false;
         }
     }

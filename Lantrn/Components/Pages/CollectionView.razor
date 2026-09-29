@@ -74,15 +74,6 @@ else
         </div>
     </div>
 
-    @* The documents folder only syncs into collections the admins manage. *@
-    @if (isAdmin && collection.OwnerId is null)
-    {
-        <div class="alert alert-info">
-            Files placed in <code>@(Id == Collection.DefaultId ? Documents.FolderPath : Path.Combine(Documents.FolderPath, collection.Name))</code>
-            are added to this collection automatically and re-embedded when they change.
-        </div>
-    }
-
     @if (error is not null)
     {
         <div class="alert alert-danger">@error</div>
@@ -156,6 +147,7 @@ else
                             <th>Document</th>
                             <th>Tags</th>
                             <th class="text-end">Chunks</th>
+                            <th>Added by</th>
                             <th>Ingested</th>
                             <th></th>
                         </tr>
@@ -197,6 +189,7 @@ else
                                     }
                                 </td>
                                 <td class="text-end">@document.ChunkCount.ToString("N0")</td>
+                                <td class="text-break">@CollectionLabels.Person(document.AddedById, document.AddedByEmail, user)</td>
                                 <td>@document.IngestedAt.ToLocalTime().ToString("g")</td>
                                 <td class="text-end text-nowrap">
                                     <button class="btn btn-sm btn-outline-primary" @onclick="() => editingId = document.Id"
@@ -255,7 +248,6 @@ else
     private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
 
     private ClaimsPrincipal user = new();
-    private bool isAdmin;
     private bool canManage;
     private CollectionSummary? collection;
     private IReadOnlyList<DocumentSummary> documents = [];
@@ -284,7 +276,6 @@ else
         sourceFilter = string.Empty;
 
         user = (await AuthenticationState).User;
-        isAdmin = user.IsInRole(Roles.Admin);
         collection = await Documents.GetCollectionAsync(Id, user, CollectionAccess.Contribute);
         canManage = collection?.Allows(user, CollectionAccess.Manage) == true;
         if (collection is not null)
@@ -440,7 +431,7 @@ else
             await Documents.DeleteVectorsAsync(Id);
             foreach (var document in await Documents.ListDocumentsAsync(Id))
             {
-                await Queue.EnqueueReembedAsync(Id, document.Id, document.Source);
+                await Queue.EnqueueReembedAsync(Id, document.Id, document.Source, CollectionAccessRules.SignedInUserId(user));
             }
             reembedQueued = true;
         }

@@ -63,7 +63,7 @@ Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pa
 | `Reranker`                    | Reorders candidates through a `/rerank` endpoint              |
 | `DocumentStore`               | Collections, documents, tags. Keeps SQLite and Qdrant in step |
 | `IngestQueue`, `IngestWorker` | Background queue that ingests one job at a time               |
-| `SourceSyncService`           | Syncs the documents folder and websites                       |
+| `SourceSyncService`           | Re-crawls websites on their schedule                          |
 | `WebCrawler`                  | Finds and fetches pages for a crawl                           |
 | `SearchAssistant`             | Answers from search results with citations                    |
 | `SettingsStore`               | In-memory copy of the settings row                            |

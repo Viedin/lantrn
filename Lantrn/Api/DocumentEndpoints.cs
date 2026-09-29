@@ -258,7 +258,8 @@ public static class DocumentEndpoints
 
         // Not cancellable: a store cut short would leave the database and Qdrant out of step.
         var stored = await documents.StoreAsync(
-            collectionId, source, extracted, tags, keepOriginal(extracted.Kind), cancellationToken: CancellationToken.None);
+            collectionId, source, extracted, tags, CollectionAccessRules.SignedInUserId(user), keepOriginal(extracted.Kind),
+            cancellationToken: CancellationToken.None);
         var document = await documents.GetAsync(stored.Id, CancellationToken.None);
         return TypedResults.Created($"/api/v1/documents/{stored.Id}", DocumentResponse.From(document!));
     }

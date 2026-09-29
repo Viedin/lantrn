@@ -5,9 +5,7 @@
             <span class="text-truncate small flex-grow-1">@Tally.Step</span>
             @if (Busy)
             {
-                <button class="btn btn-sm btn-outline-danger" @onclick="OnStop" disabled="@Tally.Stopping">
-                    @(Tally.Stopping ? "Stopping…" : "Stop")
-                </button>
+                <button class="btn btn-sm btn-outline-danger" @onclick="OnStop">Stop</button>
             }
         </div>
 
@@ -29,7 +27,7 @@
 
 @code {
     [Parameter, EditorRequired]
-    public IngestTally Tally { get; set; } = new();
+    public IngestTally Tally { get; set; } = IngestTally.Of([]);
 
     [Parameter]
     public bool Busy { get; set; }
