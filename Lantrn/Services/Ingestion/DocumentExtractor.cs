@@ -253,8 +253,10 @@ public sealed record DocumentChunk(
 
     // What gets embedded and keyword-indexed, as opposed to shown: on its own a chunk cannot say which
     // document or section it came from, so "Total: 342 kr" would never match a search for the shop's receipt.
-    public string IndexText(string source) =>
-        string.IsNullOrEmpty(HeadingPath)
-            ? $"Document: {source}\n\n{Content}"
-            : $"Document: {source}\nSection: {HeadingPath}\n\n{Content}";
+    public string IndexText(string source) => IndexText(source, HeadingPath, Content);
+
+    public static string IndexText(string source, string headingPath, string content) =>
+        string.IsNullOrEmpty(headingPath)
+            ? $"Document: {source}\n\n{content}"
+            : $"Document: {source}\nSection: {headingPath}\n\n{content}";
 }

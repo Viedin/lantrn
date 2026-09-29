@@ -13,7 +13,7 @@ public static class SnippetBuilder
     public static MarkupString Build(string text, IReadOnlySet<string> terms, int length = 240)
     {
         text = string.Join(' ', text.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
-        var matches = KeywordEncoder.Tokens(text).Where(token => terms.Contains(token.Text)).ToList();
+        var matches = SearchTerms.Tokens(text).Where(token => terms.Contains(token.Text)).ToList();
 
         var start = BestStart(text, matches, length);
         var end = Math.Min(text.Length, start + length);

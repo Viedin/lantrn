@@ -117,7 +117,7 @@ else
     public DocumentKind? Kind { get; set; }
 
     [Parameter]
-    public bool Hybrid { get; set; }
+    public ScoreKind ScoreKind { get; set; }
 
     [Parameter]
     public long ElapsedMs { get; set; }
@@ -126,15 +126,18 @@ else
     [Parameter]
     public int CitedCount { get; set; }
 
-    // Fusion scores only mean something relative to each other, so hybrid meters are scaled to the top hit.
+    // Fusion scores only mean something relative to each other, so their meters are scaled to the top hit.
     private string ScoreWidth(float score)
     {
-        var fraction = Hybrid && Hits is [var top, ..] && top.Score > 0 ? score / top.Score : score;
+        var fraction = ScoreKind == ScoreKind.Fusion && Hits is [var top, ..] && top.Score > 0 ? score / top.Score : score;
         // The meter is an inline style, so the width must not pick up a locale that formats decimals with a comma.
         return (Math.Clamp(fraction, 0f, 1f) * 100f).ToString("F1", CultureInfo.InvariantCulture);
     }
 
-    private string ScoreTitle => Hybrid
-        ? "Rank fusion of meaning and keyword matches, relative to the top hit"
-        : "Cosine similarity";
+    private string ScoreTitle => ScoreKind switch
+    {
+        ScoreKind.Relevance => "Reranker relevance",
+        ScoreKind.Fusion => "Rank fusion of meaning and keyword matches, relative to the top hit",
+        _ => "Cosine similarity",
+    };
 }

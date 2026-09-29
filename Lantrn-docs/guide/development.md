@@ -57,8 +57,9 @@ Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pa
 | `DocumentExtractor`           | Files → markdown → chunks                                     |
 | `EmbeddingService`            | Chunks and queries → vectors                                  |
 | `VisionOcrService`            | Images → markdown via the vision model                        |
-| `KeywordEncoder`              | Text → sparse keyword vector (BM25-style)                     |
-| `QdrantStore`                 | Writes points, runs hybrid search                             |
+| `QdrantStore`                 | Writes points, runs hybrid search (Qdrant's BM25 for keywords) |
+| `SearchService`               | Search → optional rerank → drops overlapping hits             |
+| `Reranker`                    | Reorders candidates through a `/rerank` endpoint              |
 | `DocumentStore`               | Collections, documents, tags. Keeps SQLite and Qdrant in step |
 | `IngestQueue`, `IngestWorker` | Background queue that ingests one job at a time               |
 | `SourceSyncService`           | Syncs the documents folder and websites                       |

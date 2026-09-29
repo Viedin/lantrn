@@ -67,7 +67,25 @@
                     <textarea id="embedding-prefix" class="form-control" rows="2" @bind="settings.Embeddings.QueryPrefix"></textarea>
                     <div class="form-text">Prepended to search queries only. Instruction-tuned models such as Qwen3-Embedding expect one.</div>
                 </div>
+                <div class="col-md-4">
+                    <label class="form-label" for="keyword-language">Keyword language</label>
+                    <select id="keyword-language" class="form-select" @bind="settings.Keywords.Language">
+                        @foreach (var language in KeywordLanguages)
+                        {
+                            <option value="@language">@(char.ToUpperInvariant(language[0]) + language[1..])</option>
+                        }
+                    </select>
+                </div>
+                <div class="col-12 form-text mt-1">
+                    Keyword matching drops this language's common words and matches word forms, so "invoices" finds "invoice".
+                </div>
             </div>
+            @if (KeywordLanguageChanged)
+            {
+                <div class="alert alert-warning mt-3 mb-0">
+                    Existing collections were indexed for @Store.Current.Keywords.Language. Re-embed them so their keywords match again.
+                </div>
+            }
         </details>
     </div>
 </div>
@@ -143,6 +161,42 @@
     </div>
 </div>
 
+<div class="card card-panel mb-4">
+    <div class="card-body">
+        <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+            <h2 class="section-label mb-0">Reranker</h2>
+            <div class="form-check form-switch mb-0">
+                <input id="reranker-enabled" type="checkbox" role="switch" class="form-check-input" @bind="settings.Reranker.Enabled" />
+                <label class="form-check-label" for="reranker-enabled">@(settings.Reranker.Enabled ? "On" : "Off")</label>
+            </div>
+        </div>
+        <p class="small">
+            Rereads the top candidates next to the query and reorders them by how well they answer it. The search assistant
+            then reads the reranked results too. The endpoint must serve <code>/rerank</code>, as vLLM, llama.cpp and Infinity do,
+            with a reranker model such as bge-reranker-v2-m3 or Qwen3-Reranker.
+        </p>
+
+        @if (settings.Reranker.Enabled)
+        {
+            <div class="row g-3">
+                <EndpointFields Id="reranker" Settings="settings.Reranker" Preferred="rerank" PreferredLabel="Reranker models" />
+                <div class="col-md-2">
+                    <label class="form-label" for="reranker-candidates">Candidates</label>
+                    <input id="reranker-candidates" type="number" class="form-control" @bind="settings.Reranker.Candidates" />
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label" for="reranker-timeout">Timeout (s)</label>
+                    <input id="reranker-timeout" type="number" class="form-control" @bind="settings.Reranker.TimeoutSeconds" />
+                </div>
+                <div class="col-12 form-text mt-1">
+                    Candidates is how many results are reranked per search. More finds better matches but takes longer.
+                    If the reranker fails, search falls back to the order without it.
+                </div>
+            </div>
+        }
+    </div>
+</div>
+
 <div class="sticky-actions d-flex gap-2">
     <button class="btn btn-primary" @onclick="SaveAsync" disabled="@busy">
         @if (busy)
@@ -166,6 +220,8 @@
             <li>Embeddings: @Describe(defaults.Embeddings)</li>
             <li>Vision: @Describe(defaults.Vision)</li>
             <li>Search assistant: @(defaults.Assistant.Enabled ? "on" : "off"), @Describe(defaults.Assistant)</li>
+            <li>Reranker: @(defaults.Reranker.Enabled ? "on" : "off"), @Describe(defaults.Reranker)</li>
+            <li>Keyword language: @defaults.Keywords.Language</li>
         </ul>
         <p class="mb-0">
             API keys and the query prefix are replaced by the defaults too, which usually means they are cleared.
@@ -188,7 +244,16 @@
     // Set while the restore confirmation is open, so it can show exactly what will be saved.
     private AppSettings? defaults;
 
+    // Languages Qdrant has both a stemmer and stopwords for.
+    private static readonly string[] KeywordLanguages =
+    [
+        "arabic", "danish", "dutch", "english", "finnish", "french", "german", "greek", "hungarian",
+        "italian", "norwegian", "portuguese", "romanian", "russian", "spanish", "swedish", "turkish",
+    ];
+
     private bool EmbeddingModelChanged => ChangesEmbeddings(settings);
+
+    private bool KeywordLanguageChanged => settings.Keywords.Language != Store.Current.Keywords.Language;
 
     // Nothing was embedded before a model was first set, so only a switch from one model to another matters.
     private bool ChangesEmbeddings(AppSettings candidate) =>
@@ -196,7 +261,7 @@
         && (candidate.Embeddings.Model.Trim() != Store.Current.Embeddings.Model
             || candidate.Embeddings.Dimensions != Store.Current.Embeddings.Dimensions);
 
-    // Blank endpoints can be saved so the rest of the page can be, but a disabled assistant is skipped and an enabled one is not.
+    // Blank endpoints can be saved so the rest of the page can be, but a disabled assistant or reranker is skipped and an enabled one is not.
     private IEnumerable<(string Name, IEndpointSettings Endpoint)> Endpoints()
     {
         if (!settings.Embeddings.IsBlank())
@@ -210,6 +275,10 @@
         if (settings.Assistant.Enabled)
         {
             yield return ("search assistant", settings.Assistant);
+        }
+        if (settings.Reranker.Enabled)
+        {
+            yield return ("reranker", settings.Reranker);
         }
     }
 
@@ -292,6 +361,10 @@
         if (settings.Assistant.Enabled && settings.Assistant.MaxSources <= 0)
         {
             return "The search assistant's sources must be positive.";
+        }
+        if (settings.Reranker.Enabled && settings.Reranker.Candidates <= 0)
+        {
+            return "The reranker's candidates must be positive.";
         }
 
         return null;
