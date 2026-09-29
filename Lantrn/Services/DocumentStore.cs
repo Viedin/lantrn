@@ -1,6 +1,8 @@
+using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Lantrn.Infra;
+using Lantrn.Services.Accounts;
 using Lantrn.Services.Ingestion;
 using Lantrn.Services.Search;
 using Microsoft.EntityFrameworkCore;
@@ -19,8 +21,6 @@ public sealed partial class DocumentStore(
     IHostEnvironment environment,
     ILogger<DocumentStore> logger)
 {
-    public const string DefaultCollection = "documents";
-
     private readonly string originalsPath = Path.Combine(
         Path.GetFullPath(storage.Value.DataPath, environment.ContentRootPath), "originals");
 
@@ -28,7 +28,7 @@ public sealed partial class DocumentStore(
     public string FolderPath { get; } = Path.Combine(
         Path.GetFullPath(storage.Value.DataPath, environment.ContentRootPath), "documents");
 
-    // Lowercase so names read the same in URLs, and a subset of what Qdrant accepts.
+    // Lowercase, so names read alike wherever they are shown and a documents folder maps onto one.
     [GeneratedRegex("^[a-z0-9][a-z0-9_-]{0,62}$")]
     private static partial Regex CollectionNamePattern();
 
@@ -48,33 +48,56 @@ public sealed partial class DocumentStore(
     public async Task EnsureDefaultCollectionAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        if (await db.Collections.AsNoTracking().AnyAsync(c => c.Name == DefaultCollection, cancellationToken))
+        if (await db.Collections.AsNoTracking().AnyAsync(c => c.Id == Collection.DefaultId, cancellationToken))
         {
             return;
         }
 
-        db.Collections.Add(new Collection { Name = DefaultCollection, CreatedAt = DateTime.UtcNow });
+        db.Collections.Add(new Collection { Id = Collection.DefaultId, Name = Collection.DefaultName, CreatedAt = DateTime.UtcNow });
         await db.SaveChangesAsync(cancellationToken);
-        logger.LogInformation("Created the default collection '{Collection}'", DefaultCollection);
+        logger.LogInformation("Created the default collection '{Collection}'", Collection.DefaultName);
     }
 
-    public async Task<IReadOnlyList<CollectionSummary>> ListCollectionsAsync(CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<CollectionSummary>> ListCollectionsAsync(
+        ClaimsPrincipal user,
+        CollectionAccess access,
+        CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         // Ordered before projecting: EF cannot translate a member of the constructed record.
-        return await SummarizeCollections(db.Collections.AsNoTracking().OrderBy(c => c.Name))
+        return await SummarizeCollections(db, db.Collections.AsNoTracking().WhereAllowed(user, access).OrderBy(c => c.Name))
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<CollectionSummary?> GetCollectionAsync(string name, CancellationToken cancellationToken = default)
+    // A collection the user may not reach reads as missing, so its id gives nothing away.
+    public async Task<CollectionSummary?> GetCollectionAsync(
+        Guid id,
+        ClaimsPrincipal user,
+        CollectionAccess access,
+        CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        return await SummarizeCollections(db.Collections.AsNoTracking().Where(c => c.Name == name))
+        return await SummarizeCollections(db, db.Collections.AsNoTracking().WhereAllowed(user, access).Where(c => c.Id == id))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
+    // The collections the admins manage, by name, which is how the documents folder refers to them.
+    public async Task<Dictionary<string, Guid>> ListManagedCollectionsAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await db.Collections
+            .AsNoTracking()
+            .Where(c => c.OwnerId == null)
+            .ToDictionaryAsync(c => c.Name, c => c.Id, cancellationToken);
+    }
+
     // The Qdrant side is created on the first push, once the embedding size is known.
-    public async Task CreateCollectionAsync(string name, string? description, CancellationToken cancellationToken = default)
+    public async Task<Guid> CreateCollectionAsync(
+        string name,
+        string? description,
+        bool isPrivate,
+        string? ownerId,
+        CancellationToken cancellationToken = default)
     {
         if (!IsValidCollectionName(name))
         {
@@ -83,63 +106,79 @@ public sealed partial class DocumentStore(
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        if (await db.Collections.AsNoTracking().AnyAsync(c => c.Name == name, cancellationToken))
+        if (await db.Collections.AsNoTracking().AnyAsync(c => c.OwnerId == ownerId && c.Name == name, cancellationToken))
         {
-            throw new InvalidOperationException($"A collection named '{name}' already exists.");
+            throw new InvalidOperationException(
+                ownerId is null ? $"The admins already have a collection named '{name}'." : $"You already have a collection named '{name}'.");
         }
 
-        db.Collections.Add(new Collection
+        var collection = new Collection
         {
             Name = name,
             Description = string.IsNullOrWhiteSpace(description) ? null : description.Trim(),
+            IsPrivate = isPrivate,
+            OwnerId = ownerId,
             CreatedAt = DateTime.UtcNow,
-        });
+        };
+        db.Collections.Add(collection);
         await db.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Created collection '{Collection}'", name);
+        logger.LogInformation("Created {Visibility} collection '{Collection}' ({CollectionId})",
+            isPrivate ? "private" : "public", name, collection.Id);
+        return collection.Id;
     }
 
-    public async Task DeleteCollectionAsync(string name, CancellationToken cancellationToken = default)
+    public async Task SetVisibilityAsync(Guid id, bool isPrivate, CancellationToken cancellationToken = default)
     {
-        if (name == DefaultCollection)
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        await db.Collections
+            .Where(c => c.Id == id)
+            .ExecuteUpdateAsync(c => c.SetProperty(x => x.IsPrivate, isPrivate), cancellationToken);
+
+        logger.LogInformation("Made collection {CollectionId} {Visibility}", id, isPrivate ? "private" : "public");
+    }
+
+    public async Task DeleteCollectionAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        if (id == Collection.DefaultId)
         {
-            throw new InvalidOperationException($"The '{DefaultCollection}' collection can be cleared but not deleted.");
+            throw new InvalidOperationException($"The '{Collection.DefaultName}' collection can be cleared but not deleted.");
         }
 
-        await ClearCollectionAsync(name, cancellationToken);
+        await ClearCollectionAsync(id, cancellationToken);
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        await db.Collections.Where(c => c.Name == name).ExecuteDeleteAsync(cancellationToken);
+        await db.Collections.Where(c => c.Id == id).ExecuteDeleteAsync(cancellationToken);
 
-        logger.LogInformation("Deleted collection '{Collection}'", name);
+        logger.LogInformation("Deleted collection {CollectionId}", id);
     }
 
     // Removes every document and vector but keeps the collection itself.
-    public async Task ClearCollectionAsync(string name, CancellationToken cancellationToken = default)
+    public async Task ClearCollectionAsync(Guid id, CancellationToken cancellationToken = default)
     {
-        await qdrant.DeleteCollectionAsync(name, cancellationToken);
+        await qdrant.DeleteCollectionAsync(id, cancellationToken);
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var originals = await db.Documents
             .AsNoTracking()
-            .Where(d => d.Collection == name && d.OriginalFile != null)
+            .Where(d => d.CollectionId == id && d.OriginalFile != null)
             .Select(d => d.OriginalFile!)
             .ToListAsync(cancellationToken);
 
         // Tags go with them through the cascading foreign key.
-        await db.Documents.Where(d => d.Collection == name).ExecuteDeleteAsync(cancellationToken);
+        await db.Documents.Where(d => d.CollectionId == id).ExecuteDeleteAsync(cancellationToken);
 
         foreach (var original in originals)
         {
             DeleteOriginal(original);
         }
 
-        logger.LogInformation("Cleared the documents of collection '{Collection}'", name);
+        logger.LogInformation("Cleared the documents of collection {CollectionId}", id);
     }
 
     // Keeps the documents so they can be embedded again, such as with another model.
-    public Task DeleteVectorsAsync(string collection, CancellationToken cancellationToken = default) =>
-        qdrant.DeleteCollectionAsync(collection, cancellationToken);
+    public Task DeleteVectorsAsync(Guid collectionId, CancellationToken cancellationToken = default) =>
+        qdrant.DeleteCollectionAsync(collectionId, cancellationToken);
 
     // The documents a folder or website brought in, with the hash of what they were embedded from.
     public async Task<IReadOnlyList<SyncedDocument>> ListSourceDocumentsAsync(Guid sourceId, CancellationToken cancellationToken = default)
@@ -148,19 +187,19 @@ public sealed partial class DocumentStore(
         return await db.Documents
             .AsNoTracking()
             .Where(d => d.SourceId == sourceId)
-            .Select(d => new SyncedDocument(d.Id, d.Collection, d.Source, d.ContentHash))
+            .Select(d => new SyncedDocument(d.Id, d.CollectionId, d.Source, d.ContentHash))
             .ToListAsync(cancellationToken);
     }
 
     public async Task<IReadOnlyList<DocumentSummary>> ListDocumentsAsync(
-        string collection,
+        Guid collectionId,
         string? tag = null,
         string? sourceFilter = null,
         CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
-        var query = db.Documents.AsNoTracking().Where(d => d.Collection == collection);
+        var query = db.Documents.AsNoTracking().Where(d => d.CollectionId == collectionId);
         if (!string.IsNullOrEmpty(tag))
         {
             query = query.Where(d => d.Tags.Any(t => t.Name == tag));
@@ -183,12 +222,12 @@ public sealed partial class DocumentStore(
             .ToListAsync(cancellationToken);
     }
 
-    public async Task<IReadOnlyList<TagCount>> ListTagsAsync(string collection, CancellationToken cancellationToken = default)
+    public async Task<IReadOnlyList<TagCount>> ListTagsAsync(Guid collectionId, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         return await db.Documents
             .AsNoTracking()
-            .Where(d => d.Collection == collection)
+            .Where(d => d.CollectionId == collectionId)
             .SelectMany(d => d.Tags)
             .GroupBy(t => t.Name)
             .OrderBy(g => g.Key)
@@ -203,30 +242,41 @@ public sealed partial class DocumentStore(
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 
-        var collections = await SummarizeCollections(db.Collections.AsNoTracking().OrderBy(c => c.Name))
+        var collections = await SummarizeCollections(db, db.Collections.AsNoTracking().OrderBy(c => c.Name))
             .ToListAsync(cancellationToken);
 
         var recent = await db.Documents
             .AsNoTracking()
             .OrderByDescending(d => d.IngestedAt)
             .Take(recentDocuments)
-            .Select(d => new RecentDocument(d.Id, d.Collection, d.Source, d.IngestedAt, d.ChunkCount))
+            .Select(d => new RecentDocument(
+                d.Id,
+                d.CollectionId,
+                db.Collections.Where(c => c.Id == d.CollectionId).Select(c => c.Name).First(),
+                d.Source,
+                d.IngestedAt,
+                d.ChunkCount))
             .ToListAsync(cancellationToken);
 
-        var tags = db.Documents.AsNoTracking().SelectMany(d => d.Tags, (d, t) => new { d.Collection, t.Name });
+        var tags = db.Documents.AsNoTracking().SelectMany(d => d.Tags, (d, t) => new { d.CollectionId, t.Name });
 
         var distinctTags = await tags.Select(t => t.Name).Distinct().CountAsync(cancellationToken);
 
         // Per collection, since search filters tags within one collection at a time.
         var top = await tags
-            .GroupBy(t => new { t.Collection, t.Name })
+            .GroupBy(t => new { t.CollectionId, t.Name })
             .OrderByDescending(g => g.Count())
             .ThenBy(g => g.Key.Name)
             .Take(topTags)
-            .Select(g => new CollectionTagCount(g.Key.Collection, g.Key.Name, g.Count()))
+            .Select(g => new { g.Key.CollectionId, g.Key.Name, Documents = g.Count() })
             .ToListAsync(cancellationToken);
 
-        return new LibraryOverview(collections, recent, distinctTags, top);
+        var names = collections.ToDictionary(c => c.Id, c => c.Name);
+        return new LibraryOverview(
+            collections,
+            recent,
+            distinctTags,
+            [.. top.Select(t => new CollectionTagCount(t.CollectionId, names[t.CollectionId], t.Name, t.Documents))]);
     }
 
     public async Task<Document?> GetAsync(Guid id, CancellationToken cancellationToken = default)
@@ -242,7 +292,7 @@ public sealed partial class DocumentStore(
         return await db.Documents
             .AsNoTracking()
             .Where(d => d.Id == id)
-            .Select(d => new DocumentLocation(d.Collection, d.Source))
+            .Select(d => new DocumentLocation(d.CollectionId, d.Source))
             .SingleOrDefaultAsync(cancellationToken);
     }
 
@@ -268,7 +318,7 @@ public sealed partial class DocumentStore(
     // The uploaded bytes are kept as the original when given, so an OCR'd image can be shown next to its text
     // and a PDF opened in the browser's viewer.
     public async Task<StoredDocument> StoreAsync(
-        string collection,
+        Guid collectionId,
         string source,
         IngestResult result,
         IReadOnlyList<string> tags,
@@ -281,9 +331,9 @@ public sealed partial class DocumentStore(
 
         // Queued jobs can outlive their collection or source. Checked before Qdrant is touched,
         // since the save below would fail only after the points were written.
-        if (!await db.Collections.AsNoTracking().AnyAsync(c => c.Name == collection, cancellationToken))
+        if (!await db.Collections.AsNoTracking().AnyAsync(c => c.Id == collectionId, cancellationToken))
         {
-            throw new InvalidOperationException($"The collection '{collection}' no longer exists.");
+            throw new InvalidOperationException("The collection no longer exists.");
         }
         if (sourceId is { } id && !await db.Sources.AsNoTracking().AnyAsync(s => s.Id == id, cancellationToken))
         {
@@ -292,11 +342,11 @@ public sealed partial class DocumentStore(
 
         var document = await db.Documents
             .Include(d => d.Tags)
-            .SingleOrDefaultAsync(d => d.Collection == collection && d.Source == source, cancellationToken);
+            .SingleOrDefaultAsync(d => d.CollectionId == collectionId && d.Source == source, cancellationToken);
 
         if (document is null)
         {
-            document = new Document { Collection = collection, Source = source, Markdown = result.Markdown };
+            document = new Document { CollectionId = collectionId, Source = source, Markdown = result.Markdown };
             db.Documents.Add(document);
         }
 
@@ -305,7 +355,7 @@ public sealed partial class DocumentStore(
         document.ContentHash = contentHash;
         document.SourceId = sourceId;
         document.ChunkCount = await qdrant.ReplaceDocumentAsync(
-            collection, source, document.Id, result.Kind, result.Chunks, tags, cancellationToken);
+            collectionId, source, document.Id, result.Kind, result.Chunks, tags, cancellationToken);
         document.IngestedAt = DateTime.UtcNow;
 
         var previousOriginal = document.OriginalFile;
@@ -318,8 +368,8 @@ public sealed partial class DocumentStore(
         ApplyTags(document, tags);
         await db.SaveChangesAsync(cancellationToken);
 
-        logger.LogInformation("Stored {Characters:N0} chars of markdown for {Source} in '{Collection}' as {DocumentId}",
-            result.Markdown.Length, source, collection, document.Id);
+        logger.LogInformation("Stored {Characters:N0} chars of markdown for {Source} in collection {CollectionId} as {DocumentId}",
+            result.Markdown.Length, source, collectionId, document.Id);
 
         return new StoredDocument(document.Id, document.ChunkCount);
     }
@@ -331,7 +381,7 @@ public sealed partial class DocumentStore(
             ?? throw new InvalidOperationException("This document no longer exists.");
 
         // Qdrant first: search filters on its copy, so the database must not claim tags the points lack.
-        await qdrant.SetTagsAsync(document.Collection, id, tags, cancellationToken);
+        await qdrant.SetTagsAsync(document.CollectionId, id, tags, cancellationToken);
         ApplyTags(document, tags);
         await db.SaveChangesAsync(cancellationToken);
     }
@@ -345,7 +395,7 @@ public sealed partial class DocumentStore(
             return;
         }
 
-        await qdrant.DeleteDocumentAsync(document.Collection, id, cancellationToken);
+        await qdrant.DeleteDocumentAsync(document.CollectionId, id, cancellationToken);
         db.Documents.Remove(document);
         await db.SaveChangesAsync(cancellationToken);
 
@@ -354,7 +404,7 @@ public sealed partial class DocumentStore(
             DeleteOriginal(document.OriginalFile);
         }
 
-        logger.LogInformation("Deleted {Source} from '{Collection}'", document.Source, document.Collection);
+        logger.LogInformation("Deleted {Source} from collection {CollectionId}", document.Source, document.CollectionId);
     }
 
     // Diffs rather than clearing, since a removed and re-added tag would share its key.
@@ -391,10 +441,14 @@ public sealed partial class DocumentStore(
         }
     }
 
-    private static IQueryable<CollectionSummary> SummarizeCollections(IQueryable<Collection> collections) =>
+    private static IQueryable<CollectionSummary> SummarizeCollections(DatabaseContext db, IQueryable<Collection> collections) =>
         collections.Select(c => new CollectionSummary(
+            c.Id,
             c.Name,
             c.Description,
+            c.IsPrivate,
+            c.OwnerId,
+            db.Users.Where(u => u.Id == c.OwnerId).Select(u => u.Email).FirstOrDefault(),
             c.CreatedAt,
             c.Documents.Count,
             c.Documents.Sum(d => d.ChunkCount),
@@ -402,8 +456,12 @@ public sealed partial class DocumentStore(
 }
 
 public sealed record CollectionSummary(
+    Guid Id,
     string Name,
     string? Description,
+    bool IsPrivate,
+    string? OwnerId,
+    string? OwnerEmail,
     DateTime CreatedAt,
     int DocumentCount,
     int ChunkCount,
@@ -420,9 +478,9 @@ public sealed record DocumentSummary(
 
 public sealed record TagCount(string Name, int Documents);
 
-public sealed record CollectionTagCount(string Collection, string Name, int Documents);
+public sealed record CollectionTagCount(Guid CollectionId, string CollectionName, string Name, int Documents);
 
-public sealed record RecentDocument(Guid Id, string Collection, string Source, DateTime IngestedAt, int ChunkCount);
+public sealed record RecentDocument(Guid Id, Guid CollectionId, string CollectionName, string Source, DateTime IngestedAt, int ChunkCount);
 
 public sealed record LibraryOverview(
     IReadOnlyList<CollectionSummary> Collections,
@@ -437,13 +495,13 @@ public sealed record LibraryOverview(
     public DateTime? LastIngestedAt => Collections.Max(c => c.LastIngestedAt);
 }
 
-public sealed record DocumentLocation(string Collection, string Source);
+public sealed record DocumentLocation(Guid CollectionId, string Source);
 
 public sealed record StoredOriginal(string Path, string ContentType);
 
 public sealed record StoredDocument(Guid Id, int ChunkCount);
 
-public sealed record SyncedDocument(Guid Id, string Collection, string Source, string? ContentHash);
+public sealed record SyncedDocument(Guid Id, Guid CollectionId, string Source, string? ContentHash);
 
 public sealed class StorageOptions
 {

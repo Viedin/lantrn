@@ -1,4 +1,6 @@
+using System.Security.Claims;
 using Lantrn.Services;
+using Lantrn.Services.Accounts;
 using Lantrn.Services.Ingestion;
 using Microsoft.AspNetCore.Http.HttpResults;
 using Microsoft.AspNetCore.Mvc;
@@ -13,13 +15,13 @@ public static class DocumentEndpoints
 
     public static RouteGroupBuilder MapDocumentEndpoints(this RouteGroupBuilder group)
     {
-        group.MapGet("/collections/{name}/documents", ListAsync)
+        group.MapGet("/collections/{id:guid}/documents", ListAsync)
             .WithName("ListDocuments")
             .WithSummary("List documents")
             .WithDescription("The collection's documents, most recently ingested first.")
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        group.MapPost("/collections/{name}/documents", UploadAsync)
+        group.MapPost("/collections/{id:guid}/documents", UploadAsync)
             .WithName("UploadDocument")
             .WithSummary("Ingest a file")
             .WithDescription(
@@ -35,7 +37,7 @@ public static class DocumentEndpoints
             .ProducesProblem(StatusCodes.Status415UnsupportedMediaType)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
-        group.MapPost("/collections/{name}/documents/markdown", IngestMarkdownAsync)
+        group.MapPost("/collections/{id:guid}/documents/markdown", IngestMarkdownAsync)
             .WithName("IngestMarkdown")
             .WithSummary("Ingest markdown")
             .WithDescription(
@@ -45,7 +47,7 @@ public static class DocumentEndpoints
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status422UnprocessableEntity);
 
-        group.MapPost("/collections/{name}/documents/url", IngestUrlAsync)
+        group.MapPost("/collections/{id:guid}/documents/url", IngestUrlAsync)
             .WithName("IngestUrl")
             .WithSummary("Ingest a web page")
             .WithDescription(
@@ -84,24 +86,26 @@ public static class DocumentEndpoints
     }
 
     private static async Task<Results<Ok<IReadOnlyList<DocumentResponse>>, ProblemHttpResult>> ListAsync(
-        string name,
+        Guid id,
+        ClaimsPrincipal user,
         DocumentStore documents,
         CancellationToken cancellationToken,
         [FromQuery] string? tag = null,
         [FromQuery] string? source = null)
     {
-        if (await documents.GetCollectionAsync(name, cancellationToken) is null)
+        if (await documents.GetCollectionAsync(id, user, CollectionAccess.Read, cancellationToken) is null)
         {
-            return ApiProblems.CollectionNotFound(name);
+            return ApiProblems.CollectionNotFound(id);
         }
 
-        var list = await documents.ListDocumentsAsync(name, tag?.ToLowerInvariant(), source, cancellationToken);
-        return TypedResults.Ok<IReadOnlyList<DocumentResponse>>(list.Select(d => DocumentResponse.From(name, d)).ToList());
+        var list = await documents.ListDocumentsAsync(id, tag?.ToLowerInvariant(), source, cancellationToken);
+        return TypedResults.Ok<IReadOnlyList<DocumentResponse>>(list.Select(d => DocumentResponse.From(id, d)).ToList());
     }
 
     private static async Task<Results<Created<DocumentResponse>, ProblemHttpResult>> UploadAsync(
-        string name,
+        Guid id,
         IFormFile file,
+        ClaimsPrincipal user,
         DocumentStore documents,
         DocumentIngestor ingestor,
         ILoggerFactory loggers,
@@ -132,15 +136,16 @@ public static class DocumentEndpoints
         var bytes = buffer.ToArray();
 
         return await IngestAsync(
-            name, source, DocumentStore.ParseTags(tags), ChunkingOptions.ToOptions(maxCharacters, minCharacters, overlap),
+            id, source,DocumentStore.ParseTags(tags), ChunkingOptions.ToOptions(maxCharacters, minCharacters, overlap),
             (options, ct) => ingestor.IngestFileAsync(bytes, source, source, options, ct),
             keepOriginal: kind => DocumentExtractor.KeepsOriginal(source, kind) ? bytes : null,
-            documents, loggers, cancellationToken);
+            user, documents, loggers, cancellationToken);
     }
 
     private static Task<Results<Created<DocumentResponse>, ProblemHttpResult>> IngestMarkdownAsync(
-        string name,
+        Guid id,
         IngestMarkdownRequest request,
+        ClaimsPrincipal user,
         DocumentStore documents,
         DocumentIngestor ingestor,
         ILoggerFactory loggers,
@@ -148,15 +153,16 @@ public static class DocumentEndpoints
     {
         var source = request.Source.Trim();
         return IngestAsync(
-            name, source, NormalizeTags(request.Tags), request.Chunking?.ToOptions() ?? new IngestOptions(),
+            id, source,NormalizeTags(request.Tags), request.Chunking?.ToOptions() ?? new IngestOptions(),
             (options, ct) => ingestor.IngestMarkdownAsync(request.Markdown, source, options, ct),
             keepOriginal: _ => null,
-            documents, loggers, cancellationToken);
+            user, documents, loggers, cancellationToken);
     }
 
     private static async Task<Results<Created<DocumentResponse>, ProblemHttpResult>> IngestUrlAsync(
-        string name,
+        Guid id,
         IngestUrlRequest request,
+        ClaimsPrincipal user,
         DocumentStore documents,
         DocumentIngestor ingestor,
         WebCrawler crawler,
@@ -170,14 +176,14 @@ public static class DocumentEndpoints
 
         var source = request.Url.ToString();
         return await IngestAsync(
-            name, source, NormalizeTags(request.Tags), request.Chunking?.ToOptions() ?? new IngestOptions(),
+            id, source,NormalizeTags(request.Tags), request.Chunking?.ToOptions() ?? new IngestOptions(),
             async (options, ct) =>
             {
                 var page = await crawler.FetchAsync(request.Url, ct);
                 return await ingestor.IngestFileAsync(page.Bytes, page.FileName, source, options, ct);
             },
             keepOriginal: _ => null,
-            documents, loggers, cancellationToken);
+            user, documents, loggers, cancellationToken);
     }
 
     private static async Task<Results<Ok<DocumentDetailResponse>, ProblemHttpResult>> GetAsync(
@@ -219,19 +225,20 @@ public static class DocumentEndpoints
 
     // The shared tail of every ingest: check the target, run the pipeline, then store the result.
     private static async Task<Results<Created<DocumentResponse>, ProblemHttpResult>> IngestAsync(
-        string collection,
+        Guid collectionId,
         string source,
         IReadOnlyList<string> tags,
         IngestOptions options,
         Func<IngestOptions, CancellationToken, Task<IngestResult>> extract,
         Func<Infra.DocumentKind, byte[]?> keepOriginal,
+        ClaimsPrincipal user,
         DocumentStore documents,
         ILoggerFactory loggers,
         CancellationToken cancellationToken)
     {
-        if (await documents.GetCollectionAsync(collection, cancellationToken) is null)
+        if (await documents.GetCollectionAsync(collectionId, user, CollectionAccess.Contribute, cancellationToken) is null)
         {
-            return ApiProblems.CollectionNotFound(collection);
+            return ApiProblems.CollectionNotFound(collectionId);
         }
         if (options.Validate() is { } invalid)
         {
@@ -245,13 +252,13 @@ public static class DocumentEndpoints
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
-            loggers.CreateLogger(typeof(DocumentEndpoints)).LogError(ex, "API ingest of {Source} into '{Collection}' failed", source, collection);
+            loggers.CreateLogger(typeof(DocumentEndpoints)).LogError(ex, "API ingest of {Source} into collection {CollectionId} failed", source, collectionId);
             return ApiProblems.IngestFailed(ex.Message);
         }
 
         // Not cancellable: a store cut short would leave the database and Qdrant out of step.
         var stored = await documents.StoreAsync(
-            collection, source, extracted, tags, keepOriginal(extracted.Kind), cancellationToken: CancellationToken.None);
+            collectionId, source, extracted, tags, keepOriginal(extracted.Kind), cancellationToken: CancellationToken.None);
         var document = await documents.GetAsync(stored.Id, CancellationToken.None);
         return TypedResults.Created($"/api/v1/documents/{stored.Id}", DocumentResponse.From(document!));
     }

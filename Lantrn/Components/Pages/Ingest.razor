@@ -60,7 +60,7 @@
             </div>
         </details>
 
-        <button class="btn btn-primary" @onclick="QueueFilesAsync" disabled="@(files.Count == 0 || string.IsNullOrEmpty(collection) || uploading is not null)">
+        <button class="btn btn-primary" @onclick="QueueFilesAsync" disabled="@(files.Count == 0 || collection is null || uploading is not null)">
             @if (uploading is not null)
             {
                 <span class="spinner-border spinner-border-sm me-2" aria-hidden="true"></span>
@@ -68,7 +68,7 @@
             }
             else
             {
-                <text>Ingest into @(string.IsNullOrEmpty(collection) ? "collection" : $"'{collection}'")</text>
+                <text>Ingest into @(collection is null ? "collection" : $"'{collection.Name}'")</text>
             }
         </button>
     </div>
@@ -79,9 +79,12 @@
     <div class="alert alert-danger">@error</div>
 }
 
-<IngestActivity />
+<IngestActivity Collections="collections" />
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
     private List<IBrowserFile> files = [];
     private string? error;
     private string? uploading;
@@ -94,14 +97,14 @@
     private string tagsInput = string.Empty;
     private readonly IngestOptions options = new();
     private IReadOnlyList<CollectionSummary> collections = [];
-    private string collection = string.Empty;
+    private CollectionSummary? collection;
 
     [SupplyParameterFromQuery(Name = "collection")]
     public string? CollectionParameter { get; set; }
 
     protected override async Task OnInitializedAsync()
     {
-        collections = await Documents.ListCollectionsAsync();
+        collections = await Documents.ListCollectionsAsync((await AuthenticationState).User, CollectionAccess.Contribute);
         collection = CollectionSelect.Pick(collections, CollectionParameter);
     }
 
@@ -149,7 +152,7 @@
     private async Task QueueFilesAsync()
     {
         error = options.Validate();
-        if (files.Count == 0 || string.IsNullOrEmpty(collection) || error is not null)
+        if (files.Count == 0 || collection is null || error is not null)
         {
             return;
         }
@@ -164,7 +167,7 @@
             try
             {
                 await using var stream = file.OpenReadStream(IngestQueue.MaxFileSize, disposed.Token);
-                await Queue.EnqueueUploadAsync(new IngestRequest(collection, file.Name, file.Name, tags, options.Clone()), stream, disposed.Token);
+                await Queue.EnqueueUploadAsync(new IngestRequest(collection.Id, file.Name, file.Name, tags, options.Clone()), stream, disposed.Token);
             }
             catch (Exception ex) when (!disposed.IsCancellationRequested)
             {

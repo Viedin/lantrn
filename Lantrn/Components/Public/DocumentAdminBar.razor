@@ -48,7 +48,7 @@
     public string Source { get; set; } = string.Empty;
 
     [Parameter, EditorRequired]
-    public string Collection { get; set; } = string.Empty;
+    public Guid CollectionId { get; set; }
 
     [Parameter, EditorRequired]
     public IReadOnlyList<string> Tags { get; set; } = [];
@@ -64,12 +64,13 @@
 
     protected override void OnInitialized() => tags = Tags;
 
-    // Only rendered for admins, but the circuit would still run a handler after the role was taken away.
-    private async Task<bool> IsAdminAsync() => (await AuthenticationState).User.IsInRole(Roles.Admin);
+    // Only rendered for those who may edit, but the circuit would still run a handler after the role was taken away.
+    private async Task<bool> CanEditAsync() =>
+        await Documents.GetCollectionAsync(CollectionId, (await AuthenticationState).User, CollectionAccess.Contribute) is not null;
 
     private async Task SaveTagsAsync(IReadOnlyList<string> newTags)
     {
-        if (!await IsAdminAsync())
+        if (!await CanEditAsync())
         {
             return;
         }
@@ -96,7 +97,7 @@
 
     private async Task DeleteAsync()
     {
-        if (!await IsAdminAsync())
+        if (!await CanEditAsync())
         {
             return;
         }
@@ -107,7 +108,7 @@
         try
         {
             await Documents.DeleteAsync(DocumentId);
-            Navigation.NavigateTo($"collections/{Uri.EscapeDataString(Collection)}");
+            Navigation.NavigateTo($"collections/{CollectionId}");
         }
         catch (Exception ex)
         {

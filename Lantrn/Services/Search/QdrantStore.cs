@@ -38,7 +38,7 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
     // Replaces the document's points with these (already embedded) chunks. The new points go in before
     // the old ones are removed, so a failure part way leaves the previous version searchable.
     public async Task<int> ReplaceDocumentAsync(
-        string collection,
+        Guid collectionId,
         string sourceFile,
         Guid documentId,
         DocumentKind kind,
@@ -47,6 +47,7 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
         CancellationToken cancellationToken = default)
     {
         ArgumentOutOfRangeException.ThrowIfZero(chunks.Count);
+        var collection = Name(collectionId);
         await EnsureCollectionAsync(collection, (ulong)chunks[0].Embedding.Length, cancellationToken);
 
         var language = store.Current.Keywords.Language;
@@ -96,7 +97,7 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
     }
 
     public async Task<SearchResults> SearchAsync(
-        string collection,
+        Guid collectionId,
         string queryText,
         float[] queryVector,
         IReadOnlyList<string> tags,
@@ -104,6 +105,7 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
         ulong limit = 5,
         CancellationToken cancellationToken = default)
     {
+        var collection = Name(collectionId);
         // A query of only punctuation or single letters has no keywords to match on.
         var hybrid = SearchTerms.Of(queryText).Count > 0;
 
@@ -171,12 +173,13 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
 
     // The chunks within radius of one hit, in document order, so a passage can be read in context.
     public async Task<IReadOnlyList<PassageChunk>> GetPassageAsync(
-        string collection,
+        Guid collectionId,
         Guid documentId,
         long chunkIndex,
         int radius,
         CancellationToken cancellationToken = default)
     {
+        var collection = Name(collectionId);
         var filter = DocumentFilter(documentId);
         filter.Must.Add(Conditions.Range(ChunkIndexField, new Qdrant.Client.Grpc.Range
         {
@@ -200,8 +203,9 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
             .ToList();
     }
 
-    public async Task DeleteCollectionAsync(string collection, CancellationToken cancellationToken = default)
+    public async Task DeleteCollectionAsync(Guid collectionId, CancellationToken cancellationToken = default)
     {
+        var collection = Name(collectionId);
         dimensionsByCollection.TryRemove(collection, out _);
         if (!await client.CollectionExistsAsync(collection, cancellationToken))
         {
@@ -212,8 +216,9 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
         logger.LogInformation("Deleted collection '{Collection}'", collection);
     }
 
-    public async Task DeleteDocumentAsync(string collection, Guid documentId, CancellationToken cancellationToken = default)
+    public async Task DeleteDocumentAsync(Guid collectionId, Guid documentId, CancellationToken cancellationToken = default)
     {
+        var collection = Name(collectionId);
         if (!await client.CollectionExistsAsync(collection, cancellationToken))
         {
             return;
@@ -224,11 +229,12 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
     }
 
     public async Task SetTagsAsync(
-        string collection,
+        Guid collectionId,
         Guid documentId,
         IReadOnlyList<string> tags,
         CancellationToken cancellationToken = default)
     {
+        var collection = Name(collectionId);
         if (!await client.CollectionExistsAsync(collection, cancellationToken))
         {
             return;
@@ -243,6 +249,8 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
         logger.LogInformation("Retagged document {DocumentId} in '{Collection}' with [{Tags}]",
             documentId, collection, string.Join(", ", tags));
     }
+
+    private static string Name(Guid collectionId) => collectionId.ToString("N");
 
     private static Filter DocumentFilter(Guid documentId) =>
         new() { Must = { Conditions.MatchKeyword(DocumentIdField, documentId.ToString()) } };
@@ -311,7 +319,7 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
             if (existing != dimensions)
             {
                 throw new InvalidOperationException(
-                    $"'{collection}' holds {existing}-dimension vectors, but the embedding model gives {dimensions}. " +
+                    $"This collection holds {existing}-dimension vectors, but the embedding model gives {dimensions}. " +
                     "Use Re-embed on the collection's page to switch it to the current model.");
             }
             return;

@@ -15,8 +15,12 @@ public sealed class FolderSync(DocumentStore documents, IngestQueue queue, ILogg
     public async Task SyncAsync(Source folder, CancellationToken cancellationToken)
     {
         var root = documents.FolderPath;
-        var stored = (await documents.ListSourceDocumentsAsync(folder.Id, cancellationToken)).ToDictionary(d => (d.Collection, d.Source));
-        var collections = (await documents.ListCollectionsAsync(cancellationToken)).Select(c => c.Name).ToHashSet();
+        // Folders name admin-managed collections, and everything the folder brought in lives in one of those.
+        var collections = await documents.ListManagedCollectionsAsync(cancellationToken);
+        var names = collections.ToDictionary(c => c.Value, c => c.Key);
+        var stored = (await documents.ListSourceDocumentsAsync(folder.Id, cancellationToken))
+            .Where(d => names.ContainsKey(d.CollectionId))
+            .ToDictionary(d => (names[d.CollectionId], d.Source));
         var seen = new HashSet<(string Collection, string Source)>();
         var nextHashes = new Dictionary<string, FileState>();
 
@@ -41,20 +45,21 @@ public sealed class FolderSync(DocumentStore documents, IngestQueue queue, ILogg
                 }
 
                 var hash = await HashAsync(path, info, nextHashes, cancellationToken);
+                var exists = collections.TryGetValue(item.Collection, out var collectionId);
                 if ((stored.TryGetValue((item.Collection, item.Source), out var existing) && existing.ContentHash == hash)
-                    || queue.IsPending(item.Collection, item.Source)
-                    || queue.HasFailed(item.Collection, item.Source, hash))
+                    || (exists && (queue.IsPending(collectionId, item.Source) || queue.HasFailed(collectionId, item.Source, hash))))
                 {
                     continue;
                 }
 
-                if (collections.Add(item.Collection))
+                if (!exists)
                 {
-                    await documents.CreateCollectionAsync(item.Collection, "Synced from the documents folder.", cancellationToken);
+                    collectionId = collections[item.Collection] = await documents.CreateCollectionAsync(
+                        item.Collection, "Synced from the documents folder.", isPrivate: false, ownerId: null, cancellationToken);
                 }
 
                 queue.EnqueueFile(
-                    new IngestRequest(item.Collection, item.Source, Path.GetFileName(path), item.Tags, new IngestOptions(), folder.Id),
+                    new IngestRequest(collectionId, item.Source, Path.GetFileName(path), item.Tags, new IngestOptions(), folder.Id),
                     path);
             }
             catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
@@ -104,7 +109,7 @@ public sealed class FolderSync(DocumentStore documents, IngestQueue queue, ILogg
 
         if (segments.Length == 1)
         {
-            return new FolderItem(DocumentStore.DefaultCollection, segments[0], []);
+            return new FolderItem(Collection.DefaultName, segments[0], []);
         }
 
         var collection = segments[0].ToLowerInvariant();

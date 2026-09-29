@@ -2,14 +2,10 @@
     <div class="option-row">
         <label class="option">
             <span class="option-label">Collection</span>
-            <select class="option-input" @bind:get="Collection" @bind:set="value => CollectionChanged.InvokeAsync(value)" aria-label="Collection">
-                @if (Collections.All(c => c.Name != Collection))
-                {
-                    <option value="@Collection">@Collection</option>
-                }
+            <select class="option-input" value="@Collection.ToString()" @onchange="OnCollectionChangedAsync" aria-label="Collection">
                 @foreach (var option in Collections)
                 {
-                    <option value="@option.Name">@option.Name</option>
+                    <option value="@option.Id">@Labels[option.Id]</option>
                 }
             </select>
         </label>
@@ -71,11 +67,15 @@
     [Parameter, EditorRequired]
     public IReadOnlyList<CollectionSummary> Collections { get; set; } = [];
 
-    [Parameter]
-    public string Collection { get; set; } = string.Empty;
+    // What each collection is called in the list, told apart by owner where names repeat.
+    [Parameter, EditorRequired]
+    public IReadOnlyDictionary<Guid, string> Labels { get; set; } = new Dictionary<Guid, string>();
 
     [Parameter]
-    public EventCallback<string> CollectionChanged { get; set; }
+    public Guid? Collection { get; set; }
+
+    [Parameter]
+    public EventCallback<Guid> CollectionChanged { get; set; }
 
     [Parameter]
     public DocumentKind? Kind { get; set; }
@@ -97,4 +97,10 @@
 
     [Parameter]
     public EventCallback<string> OnToggleTag { get; set; }
+
+    // The posted value comes from the browser; only a collection on offer may be searched.
+    private Task OnCollectionChangedAsync(ChangeEventArgs e) =>
+        Guid.TryParse(e.Value?.ToString(), out var id) && Collections.Any(c => c.Id == id)
+            ? CollectionChanged.InvokeAsync(id)
+            : Task.CompletedTask;
 }

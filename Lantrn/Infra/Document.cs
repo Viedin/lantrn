@@ -7,7 +7,7 @@ public sealed class Document
 {
     public Guid Id { get; set; }
 
-    public required string Collection { get; set; }
+    public Guid CollectionId { get; set; }
 
     // File name for uploads, URL for crawled pages; the same value Qdrant stores as "source".
     public required string Source { get; set; }
@@ -38,11 +38,11 @@ public sealed class DocumentConfiguration : IEntityTypeConfiguration<Document>
     {
         builder.HasOne<Collection>()
             .WithMany(c => c.Documents)
-            .HasForeignKey(d => d.Collection)
+            .HasForeignKey(d => d.CollectionId)
             .OnDelete(DeleteBehavior.Cascade);
 
         // Re-ingesting the same file or URL into a collection refreshes its row instead of adding another.
-        builder.HasIndex(d => new { d.Collection, d.Source })
+        builder.HasIndex(d => new { d.CollectionId, d.Source })
             .IsUnique();
 
         builder.HasMany(d => d.Tags)

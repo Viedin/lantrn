@@ -18,7 +18,7 @@ public sealed class SourceStore(IDbContextFactory<DatabaseContext> dbFactory, Do
         {
             Id = Source.DocumentsFolderId,
             Kind = SourceKind.Folder,
-            Collection = DocumentStore.DefaultCollection,
+            CollectionId = Collection.DefaultId,
             Location = documents.FolderPath,
             CreatedAt = DateTime.UtcNow,
         });
@@ -36,7 +36,7 @@ public sealed class SourceStore(IDbContextFactory<DatabaseContext> dbFactory, Do
     // Crawling the same site into the same collection again updates its source: two sources
     // claiming the same pages would each re-embed them on every sync.
     public async Task<Source> SaveWebsiteAsync(
-        string collection,
+        Guid collectionId,
         Uri start,
         string? scope,
         int maxPages,
@@ -48,14 +48,14 @@ public sealed class SourceStore(IDbContextFactory<DatabaseContext> dbFactory, Do
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var location = start.ToString();
         var source = await db.Sources.SingleOrDefaultAsync(
-            s => s.Kind == SourceKind.Website && s.Collection == collection && s.Location == location, cancellationToken);
+            s => s.Kind == SourceKind.Website && s.CollectionId == collectionId && s.Location == location, cancellationToken);
 
         if (source is null)
         {
             source = new Source
             {
                 Kind = SourceKind.Website,
-                Collection = collection,
+                CollectionId = collectionId,
                 Location = location,
                 CreatedAt = DateTime.UtcNow,
             };

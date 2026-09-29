@@ -13,7 +13,10 @@
         <details class="disclosure mb-3" @key="job.Id" open="@expanded.Contains(job.Id)">
             <summary @onclick="() => Toggle(job.Id)">
                 @job.Request.Source
-                <span class="metric-pill metric-pill-neutral ms-2">@job.Request.Collection</span>
+                @if (CollectionNames.TryGetValue(job.Request.CollectionId, out var collectionName))
+                {
+                    <span class="metric-pill metric-pill-neutral ms-2">@collectionName</span>
+                }
                 @switch (job.Status)
                 {
                     case IngestJobStatus.Queued:
@@ -71,6 +74,9 @@
 @code {
     [Parameter, EditorRequired]
     public IReadOnlyList<IngestJob> Jobs { get; set; } = [];
+
+    [Parameter, EditorRequired]
+    public IReadOnlyDictionary<Guid, string> CollectionNames { get; set; } = new Dictionary<Guid, string>();
 
     private bool showRaw;
 

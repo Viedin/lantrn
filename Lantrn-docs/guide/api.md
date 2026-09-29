@@ -25,16 +25,18 @@ A key acts as the admin who created it. It stops working if you revoke it, or if
 
 There are three ways to add a document to a collection:
 
-| Endpoint                                      | Sends                                  |
-| --------------------------------------------- | -------------------------------------- |
-| `POST /api/v1/collections/{name}/documents`          | A file, as `multipart/form-data`       |
-| `POST /api/v1/collections/{name}/documents/markdown` | Markdown or plain text, as JSON        |
-| `POST /api/v1/collections/{name}/documents/url`      | A URL for Lantrn to fetch, as JSON     |
+| Endpoint                                           | Sends                                  |
+| -------------------------------------------------- | -------------------------------------- |
+| `POST /api/v1/collections/{id}/documents`          | A file, as `multipart/form-data`       |
+| `POST /api/v1/collections/{id}/documents/markdown` | Markdown or plain text, as JSON        |
+| `POST /api/v1/collections/{id}/documents/url`      | A URL for Lantrn to fetch, as JSON     |
+
+Collections are addressed by id, since names only need to be unique per owner. `GET /api/v1/collections` lists them with their ids.
 
 Each one waits until the document is extracted, chunked and embedded, and then returns the stored document. Like on the Ingest page, a document with the same source (file name or URL) in the collection is replaced, not duplicated.
 
 ```sh
-curl https://lantrn.example.com/api/v1/collections/handbook/documents \
+curl https://lantrn.example.com/api/v1/collections/$COLLECTION_ID/documents \
   -H "Authorization: Bearer $LANTRN_API_KEY" \
   -F "file=@leave-policy.pdf" \
   -F "tags=hr,policies"

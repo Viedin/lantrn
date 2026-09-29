@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using Lantrn.Infra;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 #nullable disable
@@ -11,9 +12,11 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace Lantrn.Infra.Migrations
 {
     [DbContext(typeof(DatabaseContext))]
-    partial class DatabaseContextModelSnapshot : ModelSnapshot
+    [Migration("20260929104648_UseCollectionIds")]
+    partial class UseCollectionIds
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.12");
@@ -422,8 +425,6 @@ namespace Lantrn.Infra.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("CollectionId");
-
                     b.ToTable("Sources");
                 });
 
@@ -574,12 +575,6 @@ namespace Lantrn.Infra.Migrations
 
             modelBuilder.Entity("Lantrn.Infra.Document", b =>
                 {
-                    b.HasOne("Lantrn.Infra.Collection", null)
-                        .WithMany("Documents")
-                        .HasForeignKey("CollectionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("Lantrn.Infra.Source", null)
                         .WithMany()
                         .HasForeignKey("SourceId")
@@ -591,15 +586,6 @@ namespace Lantrn.Infra.Migrations
                     b.HasOne("Lantrn.Infra.Document", null)
                         .WithMany("Tags")
                         .HasForeignKey("DocumentId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-                });
-
-            modelBuilder.Entity("Lantrn.Infra.Source", b =>
-                {
-                    b.HasOne("Lantrn.Infra.Collection", null)
-                        .WithMany()
-                        .HasForeignKey("CollectionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
                 });
@@ -653,11 +639,6 @@ namespace Lantrn.Infra.Migrations
                         .HasForeignKey("UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-                });
-
-            modelBuilder.Entity("Lantrn.Infra.Collection", b =>
-                {
-                    b.Navigation("Documents");
                 });
 
             modelBuilder.Entity("Lantrn.Infra.Document", b =>

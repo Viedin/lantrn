@@ -32,8 +32,7 @@
         <SearchBar @ref="searchBar" @bind-Value="query" Busy="busy" OnSubmit="SubmitSearchAsync" OnClear="ClearQuery" />
     </div>
 
-    <SearchOptions Collections="collections"
-                   @bind-Collection="collection" @bind-Collection:after="LoadTagsAsync"
+    <SearchOptions Collections="collections" Labels="labels" Collection="collection?.Id" CollectionChanged="PickCollectionAsync"
                    @bind-Kind="kind" @bind-Limit="limit"
                    AvailableTags="availableTags" SelectedTags="selectedTags" OnToggleTag="ToggleTag" />
 
@@ -58,18 +57,20 @@
             <PreviewPane />
         </div>
     }
-    else if (hits is not null)
+    else if (hits is not null && searchedCollection is not null)
     {
+        var searchedName = labels[searchedCollection.Id];
         @if (hits.Count == 0)
         {
             <div class="empty-state">
                 <span class="empty-icon" aria-hidden="true"><i class="bi bi-search"></i></span>
-                <h2>No matches in '@searchedCollection'</h2>
+                <h2>No matches in '@searchedName'</h2>
                 <p>
                     Nothing in this collection came close enough. Try different wording or clear the tag filter.
-                    <AuthorizeView Roles="@Roles.Admin">
-                        You can also <a href="collections/@Uri.EscapeDataString(searchedCollection)">check what the collection holds</a>.
-                    </AuthorizeView>
+                    @if (searchedCollection.Allows(user, CollectionAccess.Contribute))
+                    {
+                        <text>You can also <a href="collections/@searchedCollection.Id">check what the collection holds</a>.</text>
+                    }
                 </p>
             </div>
         }
@@ -78,18 +79,20 @@
             @* Keyed by the results, so each search gets a fresh answer and preview cache. *@
             @if (citedCount > 0)
             {
-                <AnswerPanel @key="hits" Query="@searchedQuery" Hits="hits" Sources="citedCount" Collection="@searchedCollection"
+                <AnswerPanel @key="hits" Query="@searchedQuery" Hits="hits" Sources="citedCount"
+                             CollectionId="searchedCollection.Id" CollectionName="@searchedName"
                              Selected="selected" OnSelect="(int index) => Select(index)" />
             }
 
             <div class="results-layout">
                 <ResultList Hits="hits" Snippets="snippets" Selected="selected" OnSelect="(int index) => Select(index)"
-                            Collection="@searchedCollection" Tags="searchedTags" Kind="searchedKind" ScoreKind="scoreKind"
+                            CollectionName="@searchedName" Tags="searchedTags" Kind="searchedKind" ScoreKind="scoreKind"
                             ElapsedMs="elapsedMs" CitedCount="citedCount" />
 
                 @if (SelectedHit is { } current)
                 {
-                    <PreviewPane @key="hits" Hit="current" Index="selected" Collection="@searchedCollection"
+                    <PreviewPane @key="hits" Hit="current" Index="selected"
+                                 CollectionId="searchedCollection.Id" CollectionName="@searchedName"
                                  Open="previewOpen" Terms="terms" OnClose="() => previewOpen = false" />
                 }
             </div>
@@ -98,7 +101,6 @@
 </div>
 
 @code {
-    private const string DefaultCollection = DocumentStore.DefaultCollection;
     private const int DefaultLimit = 10;
 
     // The search lives in the URL, so going back from a document (or reloading) restores it.
@@ -118,18 +120,19 @@
     public string? KindParameter { get; set; }
 
     private string query = string.Empty;
-    private string collection = DefaultCollection;
+    private CollectionSummary? collection;
     private int limit = DefaultLimit;
     private DocumentKind? kind;
 
     private IReadOnlyList<CollectionSummary> collections = [];
+    private Dictionary<Guid, string> labels = [];
     private IReadOnlyList<string> availableTags = [];
-    private string? tagsCollection;
+    private Guid? tagsCollection;
     private HashSet<string> selectedTags = [];
 
     // What the shown results were searched with; the controls above may have moved on since.
     private string searchedQuery = string.Empty;
-    private string searchedCollection = DefaultCollection;
+    private CollectionSummary? searchedCollection;
     private IReadOnlyList<string> searchedTags = [];
     private DocumentKind? searchedKind;
 
@@ -158,15 +161,23 @@
 
     private SearchHit? SelectedHit => hits is not null && selected >= 0 && selected < hits.Count ? hits[selected] : null;
 
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private ClaimsPrincipal user = new();
+
     protected override async Task OnInitializedAsync()
     {
-        collections = await Documents.ListCollectionsAsync();
+        user = (await AuthenticationState).User;
+        collections = await Documents.ListCollectionsAsync(user, CollectionAccess.Read);
+        labels = collections.ToDictionary(c => c.Id, c => CollectionLabels.Name(c, collections, user));
     }
 
     protected override async Task OnParametersSetAsync()
     {
         query = Q ?? string.Empty;
-        collection = string.IsNullOrWhiteSpace(CollectionParameter) ? DefaultCollection : CollectionParameter;
+        // Only ever one the viewer may read, whatever the URL asks for.
+        collection = CollectionSelect.Pick(collections, CollectionParameter);
         limit = LimitParameter is { } requested && SearchOptions.ResultPresets.Contains(requested) ? requested : DefaultLimit;
         selectedTags = (TagParameter ?? []).ToHashSet();
         kind = Enum.TryParse<DocumentKind>(KindParameter, ignoreCase: true, out var requestedKind) && Enum.IsDefined(requestedKind)
@@ -176,7 +187,7 @@
         // Show the skeleton while tags load, rather than flashing the empty state before the search starts.
         busy = !string.IsNullOrWhiteSpace(query) && Navigation.Uri != lastSearchUri;
 
-        if (collection != tagsCollection)
+        if (collection?.Id != tagsCollection)
         {
             await LoadTagsAsync();
         }
@@ -186,6 +197,14 @@
             hits = null;
             error = null;
             lastSearchUri = null;
+            return;
+        }
+
+        if (collection is null)
+        {
+            hits = null;
+            busy = false;
+            error = "There's nothing you can search yet.";
             return;
         }
 
@@ -224,19 +243,30 @@
         }
     }
 
+    private async Task PickCollectionAsync(Guid id)
+    {
+        collection = collections.First(c => c.Id == id);
+        await LoadTagsAsync();
+    }
+
     private async Task LoadTagsAsync()
     {
-        tagsCollection = collection;
+        tagsCollection = collection?.Id;
+        if (collection is null)
+        {
+            availableTags = [];
+            return;
+        }
 
         try
         {
-            availableTags = (await Documents.ListTagsAsync(collection)).Select(t => t.Name).ToList();
+            availableTags = (await Documents.ListTagsAsync(collection.Id)).Select(t => t.Name).ToList();
             selectedTags.IntersectWith(availableTags);
         }
         catch (Exception ex)
         {
             // Tags are optional; search still works without the filter.
-            Log.LogWarning(ex, "Could not load tags for '{Collection}'", collection);
+            Log.LogWarning(ex, "Could not load tags for collection {CollectionId}", collection.Id);
             availableTags = [];
         }
     }
@@ -246,7 +276,7 @@
         new Dictionary<string, object?>
         {
             ["q"] = string.IsNullOrWhiteSpace(q) ? null : q.Trim(),
-            ["collection"] = collection == DefaultCollection ? null : collection,
+            ["collection"] = collection is null || collection.Id == Collection.DefaultId ? null : collection.Id.ToString(),
             ["tag"] = selectedTags.Count > 0 ? selectedTags.Order().ToArray() : null,
             ["kind"] = kind?.ToString().ToLowerInvariant(),
             ["limit"] = limit == DefaultLimit ? null : limit,
@@ -300,7 +330,7 @@
         try
         {
             var tags = selectedTags.Order().ToList();
-            var results = await Searcher.SearchAsync(collection, query, tags, kind, limit);
+            var results = await Searcher.SearchAsync(collection!.Id, query, tags, kind, limit);
 
             var queryTerms = SearchTerms.Of(query);
             terms = queryTerms.ToArray();
@@ -318,7 +348,7 @@
         }
         catch (Exception ex)
         {
-            Log.LogError(ex, "Search for {Query} in '{Collection}' failed", query, collection);
+            Log.LogError(ex, "Search for {Query} in collection {CollectionId} failed", query, collection?.Id);
             error = ex.Message;
         }
         finally

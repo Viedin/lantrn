@@ -21,13 +21,20 @@
     <div class="card-body">
         <h2 class="section-label mb-3">New collection</h2>
         <div class="row g-3 align-items-end">
-            <div class="col-md-4">
+            <div class="col-md-3">
                 <label class="form-label" for="name">Name</label>
                 <input id="name" class="form-control" @bind="newName" @bind:event="oninput" placeholder="product-docs" />
             </div>
-            <div class="col-md-6">
+            <div class="col-md-5">
                 <label class="form-label" for="description">Description</label>
                 <input id="description" class="form-control" @bind="newDescription" placeholder="Optional" />
+            </div>
+            <div class="col-md-2">
+                <label class="form-label" for="visibility">Visibility</label>
+                <select id="visibility" class="form-select" @bind="newVisibility">
+                    <option value="@Visibility.Private">Private</option>
+                    <option value="@Visibility.Public">Public</option>
+                </select>
             </div>
             <div class="col-md-2">
                 <button class="btn btn-primary w-100" @onclick="CreateAsync" disabled="@(busy || string.IsNullOrWhiteSpace(newName))">
@@ -35,7 +42,10 @@
                 </button>
             </div>
         </div>
-        <div class="form-text">Lowercase letters, digits, '-' and '_'. The name cannot be changed later.</div>
+        <div class="form-text">
+            Lowercase letters, digits, '-' and '_', unique among your collections. The name cannot be changed later.
+            Private collections are only searchable by you and the admins; every user can add to and remove from public ones.
+        </div>
     </div>
 </div>
 
@@ -61,57 +71,85 @@ else if (collections.Count == 0)
 }
 else
 {
-    <div class="card overflow-hidden">
-        <div class="table-responsive">
-            <table class="table table-hover">
-                <thead>
-                    <tr>
-                        <th>Name</th>
-                        <th class="text-end">Documents</th>
-                        <th class="text-end">Chunks</th>
-                        <th>Last ingest</th>
-                        <th></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    @foreach (var collection in collections)
-                    {
-                        <tr>
-                            <td>
-                                <a class="fw-semibold text-body-emphasis text-break" href="collections/@Uri.EscapeDataString(collection.Name)">@collection.Name</a>
-                                @if (collection.Description is not null)
-                                {
-                                    <div class="small">@collection.Description</div>
-                                }
-                            </td>
-                            <td class="text-end">@collection.DocumentCount.ToString("N0")</td>
-                            <td class="text-end">@collection.ChunkCount.ToString("N0")</td>
-                            <td>@(collection.LastIngestedAt?.ToLocalTime().ToString("g") ?? "Never")</td>
-                            <td class="text-end text-nowrap">
-                                <a class="btn btn-sm btn-outline-primary" href="./?collection=@Uri.EscapeDataString(collection.Name)">
-                                    <i class="bi bi-search" aria-hidden="true"></i> Search
-                                </a>
-                                @if (collection.Name == DocumentStore.DefaultCollection)
-                                {
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingClear = collection"
-                                            title="Clear collection" aria-label="Clear @collection.Name">
-                                        <i class="bi bi-eraser" aria-hidden="true"></i>
-                                    </button>
-                                }
-                                else
-                                {
-                                    <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingDelete = collection"
-                                            title="Delete collection" aria-label="Delete @collection.Name">
-                                        <i class="bi bi-trash" aria-hidden="true"></i>
-                                    </button>
-                                }
-                            </td>
-                        </tr>
-                    }
-                </tbody>
-            </table>
-        </div>
+    <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <input class="form-control" style="max-width: 20rem;" @bind="filter" @bind:event="oninput"
+               placeholder="Filter by name, description or owner…" aria-label="Filter collections" />
+        <select class="form-select w-auto" @bind="visibilityFilter" aria-label="Filter by visibility">
+            <option value="">Public and private</option>
+            <option value="@Visibility.Public">Public</option>
+            <option value="@Visibility.Private">Private</option>
+        </select>
+        <span class="small ms-auto">@Shown.Count.ToString("N0") of @collections.Count.ToString("N0")</span>
     </div>
+
+    @if (Shown.Count == 0)
+    {
+        <div class="empty-state">
+            <span class="empty-icon" aria-hidden="true"><i class="bi bi-funnel"></i></span>
+            <h2>No matching collections</h2>
+            <p>Clear the filter or try other words.</p>
+        </div>
+    }
+    else
+    {
+        <div class="card overflow-hidden">
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead>
+                        <tr>
+                            <th>Name</th>
+                            <th>Owner</th>
+                            <th class="text-end">Documents</th>
+                            <th class="text-end">Chunks</th>
+                            <th>Last ingest</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var collection in Shown)
+                        {
+                            <tr>
+                                <td>
+                                    <a class="fw-semibold text-body-emphasis text-break" href="collections/@collection.Id">@collection.Name</a>
+                                    <VisibilityPill IsPrivate="collection.IsPrivate" />
+                                    @if (collection.Description is not null)
+                                    {
+                                        <div class="small">@collection.Description</div>
+                                    }
+                                </td>
+                                <td class="text-break">@CollectionLabels.Owner(collection, user)</td>
+                                <td class="text-end">@collection.DocumentCount.ToString("N0")</td>
+                                <td class="text-end">@collection.ChunkCount.ToString("N0")</td>
+                                <td>@(collection.LastIngestedAt?.ToLocalTime().ToString("g") ?? "Never")</td>
+                                <td class="text-end text-nowrap">
+                                    <a class="btn btn-sm btn-outline-primary" href="./?collection=@collection.Id">
+                                        <i class="bi bi-search" aria-hidden="true"></i> Search
+                                    </a>
+                                    @if (collection.Allows(user, CollectionAccess.Manage))
+                                    {
+                                        @if (collection.Id == Collection.DefaultId)
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingClear = collection"
+                                                    title="Clear collection" aria-label="Clear @collection.Name">
+                                                <i class="bi bi-eraser" aria-hidden="true"></i>
+                                            </button>
+                                        }
+                                        else
+                                        {
+                                            <button class="btn btn-sm btn-outline-danger" @onclick="() => pendingDelete = collection"
+                                                    title="Delete collection" aria-label="Delete @collection.Name">
+                                                <i class="bi bi-trash" aria-hidden="true"></i>
+                                            </button>
+                                        }
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
 }
 
 <DeleteConfirmModal Show="@(pendingDelete is not null)" Busy="busy" Title="Delete collection?"
@@ -126,9 +164,22 @@ else
 </DeleteConfirmModal>
 
 @code {
+    private enum Visibility
+    {
+        Private,
+        Public,
+    }
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private ClaimsPrincipal user = new();
     private IReadOnlyList<CollectionSummary>? collections;
+    private string filter = string.Empty;
+    private Visibility? visibilityFilter;
     private string newName = string.Empty;
     private string newDescription = string.Empty;
+    private Visibility newVisibility = Visibility.Private;
     private CollectionSummary? pendingDelete;
     private CollectionSummary? pendingClear;
     private string? error;
@@ -136,8 +187,31 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        collections = await Documents.ListCollectionsAsync();
+        user = (await AuthenticationState).User;
+        await LoadAsync();
     }
+
+    private IReadOnlyList<CollectionSummary> Shown => collections!
+        .Where(c => visibilityFilter is null || c.IsPrivate == (visibilityFilter == Visibility.Private))
+        .Where(Matches)
+        .ToList();
+
+    // The owner is searchable as shown, so "you" and "admins" find those collections too.
+    private bool Matches(CollectionSummary collection)
+    {
+        if (string.IsNullOrWhiteSpace(filter))
+        {
+            return true;
+        }
+
+        var term = filter.Trim();
+        return collection.Name.Contains(term, StringComparison.OrdinalIgnoreCase)
+            || collection.Description?.Contains(term, StringComparison.OrdinalIgnoreCase) == true
+            || CollectionLabels.Owner(collection, user).Contains(term, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Everything the viewer can read: their own collections and every public one, or all of them for admins.
+    private async Task LoadAsync() => collections = await Documents.ListCollectionsAsync(user, CollectionAccess.Read);
 
     private async Task CreateAsync()
     {
@@ -146,10 +220,10 @@ else
 
         try
         {
-            await Documents.CreateCollectionAsync(newName.Trim(), newDescription);
+            await Documents.CreateCollectionAsync(newName.Trim(), newDescription, newVisibility == Visibility.Private, CollectionAccessRules.UserId(user));
             newName = string.Empty;
             newDescription = string.Empty;
-            collections = await Documents.ListCollectionsAsync();
+            await LoadAsync();
         }
         catch (Exception ex) when (ex is ArgumentException or InvalidOperationException)
         {
@@ -163,18 +237,18 @@ else
 
     private async Task DeleteAsync()
     {
-        var name = pendingDelete!.Name;
+        var id = pendingDelete!.Id;
         busy = true;
         error = null;
 
         try
         {
-            await Documents.DeleteCollectionAsync(name);
-            collections = await Documents.ListCollectionsAsync();
+            await Documents.DeleteCollectionAsync(id);
+            await LoadAsync();
         }
         catch (Exception ex)
         {
-            Log.LogError(ex, "Deleting collection '{Collection}' failed", name);
+            Log.LogError(ex, "Deleting collection {CollectionId} failed", id);
             error = ex.Message;
         }
         finally
@@ -186,18 +260,18 @@ else
 
     private async Task ClearAsync()
     {
-        var name = pendingClear!.Name;
+        var id = pendingClear!.Id;
         busy = true;
         error = null;
 
         try
         {
-            await Documents.ClearCollectionAsync(name);
-            collections = await Documents.ListCollectionsAsync();
+            await Documents.ClearCollectionAsync(id);
+            await LoadAsync();
         }
         catch (Exception ex)
         {
-            Log.LogError(ex, "Clearing collection '{Collection}' failed", name);
+            Log.LogError(ex, "Clearing collection {CollectionId} failed", id);
             error = ex.Message;
         }
         finally

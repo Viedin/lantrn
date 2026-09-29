@@ -22,7 +22,7 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
     private readonly List<IngestJob> recent = [];
     private static readonly TimeSpan RetryFailedAfter = TimeSpan.FromHours(1);
 
-    private readonly Dictionary<(string Collection, string Source, string ContentHash), DateTime> failed = [];
+    private readonly Dictionary<(Guid CollectionId, string Source, string ContentHash), DateTime> failed = [];
     private CancellationTokenSource? running;
     private CancellationTokenSource stop = new();
 
@@ -109,28 +109,28 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
     }
 
     // Kept in the inbox like an upload, just without bytes, so a restart still finishes the re-embed.
-    public Task EnqueueReembedAsync(string collection, Guid documentId, string source, CancellationToken cancellationToken = default) =>
+    public Task EnqueueReembedAsync(Guid collectionId, Guid documentId, string source, CancellationToken cancellationToken = default) =>
         EnqueueAsync(
-            new IngestRequest(collection, source, source, [], new IngestOptions(), ReembedDocumentId: documentId), [], cancellationToken);
+            new IngestRequest(collectionId, source, source, [], new IngestOptions(), ReembedDocumentId: documentId), [], cancellationToken);
 
     // For a file that stays where it is, in the documents folder. Not kept across restarts: the next sync finds it again.
     public void EnqueueFile(IngestRequest request, string path) => Add(new IngestJob(Guid.NewGuid(), request, path, ownsFile: false));
 
-    public bool IsPending(string collection, string source)
+    public bool IsPending(Guid collectionId, string source)
     {
         lock (gate)
         {
-            return recent.Any(j => !j.IsFinished && j.Request.Collection == collection && j.Request.Source == source);
+            return recent.Any(j => !j.IsFinished && j.Request.CollectionId == collectionId && j.Request.Source == source);
         }
     }
 
     // So a sync doesn't keep queuing a file that failed as it is, such as a broken PDF. Kept apart from the recent
     // jobs, which are cleared. Retried after a while, in case the failure was the embedding server being down.
-    public bool HasFailed(string collection, string source, string contentHash)
+    public bool HasFailed(Guid collectionId, string source, string contentHash)
     {
         lock (gate)
         {
-            return failed.TryGetValue((collection, source, contentHash), out var failedAt)
+            return failed.TryGetValue((collectionId, source, contentHash), out var failedAt)
                    && DateTime.UtcNow - failedAt < RetryFailedAfter;
         }
     }
@@ -229,7 +229,7 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
             }
 
             Add(new IngestJob(id, request, DataPath(id), ownsFile: true));
-            logger.LogInformation("Resumed the queued ingest of {Source} into '{Collection}'", request.Source, request.Collection);
+            logger.LogInformation("Resumed the queued ingest of {Source} into collection {CollectionId}", request.Source, request.CollectionId);
         }
     }
 
@@ -264,7 +264,7 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
             {
                 Tally.Stored++;
                 Tally.Chunks += job.Result?.Chunks.Count ?? 0;
-                foreach (var key in failed.Keys.Where(f => f.Collection == job.Request.Collection && f.Source == job.Request.Source).ToList())
+                foreach (var key in failed.Keys.Where(f => f.CollectionId == job.Request.CollectionId && f.Source == job.Request.Source).ToList())
                 {
                     failed.Remove(key);
                 }
@@ -274,7 +274,7 @@ public sealed class IngestQueue(IOptions<StorageOptions> storage, IHostEnvironme
                 Tally.Failed++;
                 if (job.ContentHash is { } hash)
                 {
-                    failed[(job.Request.Collection, job.Request.Source, hash)] = DateTime.UtcNow;
+                    failed[(job.Request.CollectionId, job.Request.Source, hash)] = DateTime.UtcNow;
                 }
             }
 

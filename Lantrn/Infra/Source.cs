@@ -15,7 +15,7 @@ public sealed class Source
     public SourceKind Kind { get; set; }
 
     // Where a website's pages go. The documents folder picks a collection per top-level folder and uses this for the rest.
-    public required string Collection { get; set; }
+    public Guid CollectionId { get; set; }
 
     // The start URL of a website, or the path of a folder.
     public required string Location { get; set; }
@@ -45,7 +45,7 @@ public sealed class SourceConfiguration : IEntityTypeConfiguration<Source>
     {
         builder.HasOne<Collection>()
             .WithMany()
-            .HasForeignKey(s => s.Collection)
+            .HasForeignKey(s => s.CollectionId)
             .OnDelete(DeleteBehavior.Cascade);
         builder.ComplexProperty(s => s.Chunking);
     }

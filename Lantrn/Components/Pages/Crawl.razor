@@ -78,8 +78,8 @@
             </div>
         </details>
 
-        <button class="btn btn-primary" @onclick="CrawlAsync" disabled="@(!IsValidUrl || string.IsNullOrEmpty(collection))">
-            @(Extractor is { } extractor ? $"Add {extractor.Label} to" : "Crawl into") @(string.IsNullOrEmpty(collection) ? "collection" : $"'{collection}'")
+        <button class="btn btn-primary" @onclick="CrawlAsync" disabled="@(!IsValidUrl || collection is null)">
+            @(Extractor is { } extractor ? $"Add {extractor.Label} to" : "Crawl into") @(collection is null ? "collection" : $"'{collection.Name}'")
         </button>
     </div>
 </div>
@@ -115,7 +115,7 @@
                                     <span class="small"> under @site.Scope</span>
                                 }
                             </td>
-                            <td><a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@Uri.EscapeDataString(site.Collection)">@site.Collection</a></td>
+                            <td><a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@site.CollectionId">@CollectionName(site)</a></td>
                             <td>@ToSchedule(site.SyncInterval)</td>
                             <td>
                                 @if (Sync.IsSyncing(site.Id))
@@ -148,9 +148,14 @@
     </div>
 }
 
-<IngestActivity />
+<IngestActivity Collections="collections" />
 
 @code {
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
+    private ClaimsPrincipal user = new();
+
     private enum Schedule
     {
         Never,
@@ -166,7 +171,7 @@
     private Schedule schedule = Schedule.Never;
     private readonly IngestOptions options = new();
     private IReadOnlyList<CollectionSummary> collections = [];
-    private string collection = string.Empty;
+    private CollectionSummary? collection;
     private IReadOnlyList<Source> websites = [];
 
     [SupplyParameterFromQuery(Name = "collection")]
@@ -175,7 +180,8 @@
     protected override async Task OnInitializedAsync()
     {
         Sync.Changed += OnSyncChanged;
-        collections = await Documents.ListCollectionsAsync();
+        user = (await AuthenticationState).User;
+        collections = await Documents.ListCollectionsAsync(user, CollectionAccess.Contribute);
         collection = CollectionSelect.Pick(collections, CollectionParameter);
         await LoadWebsitesAsync();
     }
@@ -201,7 +207,7 @@
     {
         var isWebsite = Extractor is null;
         error = isWebsite && maxPages <= 0 ? "Max pages must be positive." : options.Validate();
-        if (!IsValidUrl || string.IsNullOrEmpty(collection) || error is not null)
+        if (!IsValidUrl || collection is null || error is not null)
         {
             return;
         }
@@ -212,7 +218,7 @@
         try
         {
             var site = await Sources.SaveWebsiteAsync(
-                collection, start, prefix, maxPages, DocumentStore.ParseTags(tagsInput), options, ToInterval(schedule));
+                collection.Id, start, prefix, maxPages, DocumentStore.ParseTags(tagsInput), options, ToInterval(schedule));
             Sync.SyncNow(site);
             await LoadWebsitesAsync();
         }
@@ -230,7 +236,12 @@
     }
 
     private async Task LoadWebsitesAsync() =>
-        websites = (await Sources.ListAsync()).Where(s => s.Kind == SourceKind.Website).ToList();
+        websites = (await Sources.ListAsync())
+            .Where(s => s.Kind == SourceKind.Website && collections.Any(c => c.Id == s.CollectionId))
+            .ToList();
+
+    private string CollectionName(Source site) =>
+        CollectionLabels.Name(collections.First(c => c.Id == site.CollectionId), collections, user);
 
     private void OnSyncChanged() => _ = InvokeAsync(async () =>
     {

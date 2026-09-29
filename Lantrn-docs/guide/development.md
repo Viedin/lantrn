@@ -40,7 +40,8 @@ Lantrn/
 ├── Api/              # Public REST API
 ├── Components/
 │   ├── Public/       # Search and document view (search access)
-│   ├── Pages/        # Admin pages (admin only)
+│   ├── Pages/        # Collections, ingest and crawl (signed in)
+│   ├── Admin/        # Dashboard, users, settings, API keys (admin only)
 │   ├── Account/      # Login and register
 │   ├── Search/       # Search UI parts
 │   └── Shared/       # Reusable components
@@ -48,7 +49,7 @@ Lantrn/
 └── Infra/            # EF entities, DbContext, migrations
 ```
 
-Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pages/` needs the Admin role.
+Access is set per folder in `_Imports.razor`: `Public/` needs search access, `Pages/` needs an account, `Admin/` needs the Admin role. Which collections someone can read or edit is decided in `CollectionAccess`.
 
 ## Key services
 

@@ -75,7 +75,7 @@
         {
             var index = i;
             <button type="button" class="answer-source tone-@(index % 5) @(index == Selected ? "active" : null)"
-                    @onclick="() => OnSelect.InvokeAsync(index)" title="@SearchFormat.Crumb(Collection, Hits[index])">
+                    @onclick="() => OnSelect.InvokeAsync(index)" title="@SearchFormat.Crumb(CollectionName, Hits[index])">
                 <span class="cite">@(index + 1)</span>
                 <span class="answer-source-name">@Hits[index].Source</span>
             </button>
@@ -99,7 +99,10 @@
     public int Sources { get; set; }
 
     [Parameter, EditorRequired]
-    public string Collection { get; set; } = string.Empty;
+    public Guid CollectionId { get; set; }
+
+    [Parameter, EditorRequired]
+    public string CollectionName { get; set; } = string.Empty;
 
     [Parameter]
     public int Selected { get; set; } = -1;
@@ -171,7 +174,7 @@
     {
         try
         {
-            sources ??= await Assistant.LoadSourcesAsync(Collection, Hits.Take(Sources).ToList(), cancellation);
+            sources ??= await Assistant.LoadSourcesAsync(CollectionId, Hits.Take(Sources).ToList(), cancellation);
             await foreach (var delta in Assistant.AnswerAsync(sources, earlier, turn.Question, cancellation))
             {
                 turn.Text += delta;

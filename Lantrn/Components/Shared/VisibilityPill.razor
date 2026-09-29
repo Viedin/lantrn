@@ -1,0 +1,8 @@
+<span class="metric-pill metric-pill-neutral ms-1">
+    <i class="bi @(IsPrivate ? "bi-lock-fill" : "bi-globe2")" aria-hidden="true"></i> @(IsPrivate ? "Private" : "Public")
+</span>
+
+@code {
+    [Parameter, EditorRequired]
+    public bool IsPrivate { get; set; }
+}

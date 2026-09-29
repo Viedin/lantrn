@@ -4,7 +4,7 @@ namespace Lantrn.Services.Ingestion;
 // The file name decides how the bytes are read; the source is what the document is stored under.
 // A re-embed works from the stored document instead, and has no bytes.
 public sealed record IngestRequest(
-    string Collection,
+    Guid CollectionId,
     string Source,
     string FileName,
     IReadOnlyList<string> Tags,

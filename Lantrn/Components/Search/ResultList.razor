@@ -32,7 +32,7 @@ else
                 @Hits.Count @(Hits.Count == 1 ? "match" : "matches")
             </h2>
             <span class="results-detail">
-                <span class="metric-pill metric-pill-neutral">@Collection</span>
+                <span class="metric-pill metric-pill-neutral">@CollectionName</span>
                 @foreach (var tag in Tags)
                 {
                     <span class="metric-pill">@tag</span>
@@ -58,7 +58,7 @@ else
                             {
                                 <span class="cite" title="Source @(index + 1) of the answer">@(index + 1)</span>
                             }
-                            <span class="result-crumb-text">@SearchFormat.Crumb(Collection, hit)</span>
+                            <span class="result-crumb-text">@SearchFormat.Crumb(CollectionName, hit)</span>
                             <span class="score-meter" title="@ScoreTitle: @hit.Score.ToString("F3")">
                                 <span style="width: @ScoreWidth(hit.Score)%"></span>
                             </span>
@@ -108,7 +108,7 @@ else
     public EventCallback<int> OnSelect { get; set; }
 
     [Parameter]
-    public string Collection { get; set; } = string.Empty;
+    public string CollectionName { get; set; } = string.Empty;
 
     [Parameter]
     public IReadOnlyList<string> Tags { get; set; } = [];

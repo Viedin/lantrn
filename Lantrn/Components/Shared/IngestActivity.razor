@@ -2,24 +2,45 @@
 
 @inject IngestQueue Queue
 
-@* The ingest queue as it runs. It keeps working when the page is closed, so this is only a view of it. *@
+@* The ingest queue as it runs. It keeps working when the page is closed, so this is only a view of it.
+   The queue is shared, so its totals and Stop are for admins; users see only the jobs for collections they contribute to. *@
 @if (jobs.Count > 0)
 {
-    <IngestProgress Tally="Queue.Tally" Busy="busy" OnStop="Queue.StopAll" />
-    <IngestResults Jobs="jobs" />
+    @if (isAdmin)
+    {
+        <IngestProgress Tally="Queue.Tally" Busy="busy" OnStop="Queue.StopAll" />
+    }
+    <IngestResults Jobs="jobs" CollectionNames="names" />
 }
 
 @code {
+    // The collections the viewer may contribute to; their jobs are the ones shown.
+    [Parameter, EditorRequired]
+    public IReadOnlyList<CollectionSummary> Collections { get; set; } = [];
+
+    [CascadingParameter]
+    private Task<AuthenticationState> AuthenticationState { get; set; } = null!;
+
     private IReadOnlyList<IngestJob> jobs = [];
+    private Dictionary<Guid, string> names = [];
     private bool busy;
+    private bool isAdmin;
 
-    protected override void OnInitialized() => Queue.Changed += OnQueueChanged;
+    protected override async Task OnInitializedAsync()
+    {
+        isAdmin = (await AuthenticationState).User.IsInRole(Roles.Admin);
+        Queue.Changed += OnQueueChanged;
+    }
 
-    protected override void OnParametersSet() => Snapshot();
+    protected override void OnParametersSet()
+    {
+        names = Collections.ToDictionary(c => c.Id, c => c.Name);
+        Snapshot();
+    }
 
     private void Snapshot()
     {
-        jobs = Queue.Recent;
+        jobs = isAdmin ? Queue.Recent : Queue.Recent.Where(j => names.ContainsKey(j.Request.CollectionId)).ToList();
         busy = Queue.IsBusy;
     }
 

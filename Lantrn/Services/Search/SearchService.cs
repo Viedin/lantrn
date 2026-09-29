@@ -13,7 +13,7 @@ public sealed class SearchService(
     private const int CandidatesPerResult = 3;
 
     public async Task<SearchResults> SearchAsync(
-        string collection,
+        Guid collectionId,
         string query,
         IReadOnlyList<string> tags,
         DocumentKind? kind,
@@ -24,7 +24,7 @@ public sealed class SearchService(
         var candidates = rerank ? Math.Max(limit, reranker.Candidates) : limit * CandidatesPerResult;
 
         var vector = await embeddings.EmbedQueryAsync(query, cancellationToken);
-        var results = await qdrant.SearchAsync(collection, query, vector, tags, kind, (ulong)candidates, cancellationToken);
+        var results = await qdrant.SearchAsync(collectionId, query, vector, tags, kind, (ulong)candidates, cancellationToken);
 
         if (rerank)
         {

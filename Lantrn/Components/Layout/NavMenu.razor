@@ -28,11 +28,8 @@
             <span class="bi bi-search" aria-hidden="true"></span> Search
         </NavLink>
 
-        <AuthorizeView Roles="@Roles.Admin">
-            <div class="menu-section">Workspace</div>
-            <NavLink class="menu-link" href="admin" Match="NavLinkMatch.All">
-                <span class="bi bi-house-door-fill" aria-hidden="true"></span> Dashboard
-            </NavLink>
+        <AuthorizeView>
+            <div class="menu-section">Library</div>
             <NavLink class="menu-link" href="collections">
                 <span class="bi bi-collection-fill" aria-hidden="true"></span> Collections
             </NavLink>
@@ -42,8 +39,13 @@
             <NavLink class="menu-link" href="crawl">
                 <span class="bi bi-globe2" aria-hidden="true"></span> Crawl
             </NavLink>
+        </AuthorizeView>
 
+        <AuthorizeView Roles="@Roles.Admin">
             <div class="menu-section">Admin</div>
+            <NavLink class="menu-link" href="admin" Match="NavLinkMatch.All">
+                <span class="bi bi-house-door-fill" aria-hidden="true"></span> Dashboard
+            </NavLink>
             <NavLink class="menu-link" href="admin/users">
                 <span class="bi bi-people-fill" aria-hidden="true"></span> Users
             </NavLink>

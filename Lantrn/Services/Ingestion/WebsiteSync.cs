@@ -53,8 +53,8 @@ public sealed class WebsiteSync(
             await documents.DeleteAsync(document.Id, CancellationToken.None);
         }
 
-        logger.LogInformation("Synced {Site} into '{Collection}': {Found} documents, {Removed} removed, {Failed} failed",
-            site.Location, site.Collection, found.Count, missing.Count, failed);
+        logger.LogInformation("Synced {Site} into collection {CollectionId}: {Found} documents, {Removed} removed, {Failed} failed",
+            site.Location, site.CollectionId, found.Count, missing.Count, failed);
 
         return failed > 0 ? $"{failed} of {found.Count} pages could not be fetched." : null;
     }
@@ -102,14 +102,14 @@ public sealed class WebsiteSync(
     private async Task EnqueueIfChangedAsync(
         Source site, ExtractedFile file, Dictionary<string, SyncedDocument> stored, CancellationToken cancellationToken)
     {
-        if (queue.IsPending(site.Collection, file.Source)
+        if (queue.IsPending(site.CollectionId, file.Source)
             || (stored.TryGetValue(file.Source, out var existing) && existing.ContentHash == DocumentStore.Hash(file.Bytes)))
         {
             return;
         }
 
         await queue.EnqueueAsync(
-            new IngestRequest(site.Collection, file.Source, file.FileName, [.. site.Tags.Union(file.Tags)], site.Chunking, site.Id, KeepOriginal: false),
+            new IngestRequest(site.CollectionId, file.Source, file.FileName, [.. site.Tags.Union(file.Tags)], site.Chunking, site.Id, KeepOriginal: false),
             file.Bytes, cancellationToken);
     }
 }

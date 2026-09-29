@@ -132,7 +132,7 @@
                                     <tr>
                                         <td><a class="fw-semibold text-body-emphasis text-break" href="documents/@document.Id">@document.Source</a></td>
                                         <td>
-                                            <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@Uri.EscapeDataString(document.Collection)">@document.Collection</a>
+                                            <a class="metric-pill metric-pill-neutral text-decoration-none" href="collections/@document.CollectionId">@document.CollectionName</a>
                                         </td>
                                         <td class="text-end">@document.ChunkCount.ToString("N0")</td>
                                         <td class="text-end text-nowrap" title="@document.IngestedAt.ToLocalTime().ToString("g")">@TimeText.Ago(document.IngestedAt)</td>
@@ -152,7 +152,7 @@
                         {
                             <li class="list-group-item">
                                 <div class="d-flex justify-content-between gap-2">
-                                    <a class="fw-semibold text-body-emphasis text-break" href="collections/@Uri.EscapeDataString(collection.Name)">@collection.Name</a>
+                                    <a class="fw-semibold text-body-emphasis text-break" href="collections/@collection.Id">@collection.Name</a>
                                     <span class="small text-nowrap">@collection.DocumentCount.ToString("N0") docs · @collection.ChunkCount.ToString("N0") chunks</span>
                                 </div>
                                 <div class="progress mt-2" role="presentation" style="height: 0.35rem">
@@ -173,12 +173,12 @@
                     <div class="tag-chips">
                         @foreach (var tag in overview.TopTags)
                         {
-                            <a class="tag-chip text-decoration-none" title="Search '@tag.Collection' tagged @tag.Name"
-                               href="./?collection=@Uri.EscapeDataString(tag.Collection)&tag=@Uri.EscapeDataString(tag.Name)">
+                            <a class="tag-chip text-decoration-none" title="Search '@tag.CollectionName' tagged @tag.Name"
+                               href="./?collection=@tag.CollectionId&tag=@Uri.EscapeDataString(tag.Name)">
                                 @tag.Name
                                 @if (overview.Collections.Count > 1)
                                 {
-                                    <span class="tag-count">@tag.Collection</span>
+                                    <span class="tag-count">@tag.CollectionName</span>
                                 }
                                 <span class="tag-count">@tag.Documents</span>
                             </a>
