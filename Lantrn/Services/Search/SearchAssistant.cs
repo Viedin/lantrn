@@ -6,7 +6,7 @@ using OpenAI.Chat;
 namespace Lantrn.Services.Search;
 
 // Answers a search query from its top results with a chat model, citing them by number so the answer can be checked.
-public sealed class SearchAssistant(SettingsStore store, QdrantStore qdrant, ILogger<SearchAssistant> logger)
+public sealed class SearchAssistant(SettingsStore store, IQdrantStore qdrant, ILogger<SearchAssistant> logger)
 {
     private const string Instructions =
         """

@@ -4,8 +4,8 @@ namespace Lantrn.Services.Search;
 
 // Finds candidates by meaning and keywords, lets the reranker reorder them when it is on, then drops overlapping passages.
 public sealed class SearchService(
-    EmbeddingService embeddings,
-    QdrantStore qdrant,
+    IEmbeddingService embeddings,
+    IQdrantStore qdrant,
     Reranker reranker,
     ILogger<SearchService> logger)
 {

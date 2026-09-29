@@ -6,7 +6,7 @@
 
 @inject DocumentStore Documents
 @inject IngestQueue Queue
-@inject EmbeddingService Embeddings
+@inject IEmbeddingService Embeddings
 @inject ILogger<CollectionView> Log
 
 <PageTitle>@(collection?.Name ?? "Collection")</PageTitle>

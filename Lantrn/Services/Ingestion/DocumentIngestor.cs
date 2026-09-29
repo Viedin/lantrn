@@ -3,7 +3,7 @@ using Lantrn.Infra;
 namespace Lantrn.Services.Ingestion;
 
 // Turns a file or markdown into embedded chunks: the steps shared by the ingest worker and the public API.
-public sealed class DocumentIngestor(DocumentExtractor extractor, EmbeddingService embeddings, VisionOcrService vision)
+public sealed class DocumentIngestor(DocumentExtractor extractor, IEmbeddingService embeddings, VisionOcrService vision)
 {
     // Images are read by the vision model; everything else is extracted by Xberg. The file name decides how the bytes
     // are read, the source is what the chunks are indexed under; they differ for a fetched page, whose source is its URL.

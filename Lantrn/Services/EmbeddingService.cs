@@ -5,7 +5,7 @@ using OpenAI.Embeddings;
 
 namespace Lantrn.Services;
 
-public sealed class EmbeddingService(SettingsStore store, ILogger<EmbeddingService> logger)
+public sealed class EmbeddingService(SettingsStore store, ILogger<EmbeddingService> logger) : IEmbeddingService
 {
     private Connection? connection;
 
