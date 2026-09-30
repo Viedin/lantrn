@@ -41,8 +41,7 @@ public sealed record CreateCollectionRequest
     /// Unique among the collections of the key's user.
     /// </summary>
     [Required]
-    [RegularExpression("^[a-z0-9][a-z0-9_-]{0,62}$",
-        ErrorMessage = "Use lowercase letters, digits, '-' and '_' (starting with a letter or digit), at most 63 characters.")]
+    [RegularExpression(DocumentStore.CollectionNamePattern, ErrorMessage = DocumentStore.CollectionNameRule)]
     public required string Name { get; init; }
 
     /// <summary>What the collection holds, shown next to its name.</summary>

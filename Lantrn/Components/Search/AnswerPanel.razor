@@ -213,7 +213,7 @@
     // Markdig with raw HTML disabled, so the only markup the brackets can sit in is its own.
     private MarkupString ToHtml(string markdown)
     {
-        var html = MarkdownRenderer.ToHtml(markdown).Value;
+        var html = MarkdownRenderer.ToHtml(markdown, allowImages: false).Value;
         return new(CitationPattern.Replace(html, match =>
         {
             var numbers = match.Groups[1].Value.Split(',', StringSplitOptions.TrimEntries);

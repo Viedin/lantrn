@@ -74,6 +74,6 @@ public static class CoreServices
         }
 
         await app.Services.GetRequiredService<SettingsStore>().LoadAsync();
-        await app.Services.GetRequiredService<AccountService>().EnsureAdminAsync();
+        await app.Services.GetRequiredService<AccountService>().EnsureAdminRoleAsync();
     }
 }

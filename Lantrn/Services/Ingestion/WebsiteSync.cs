@@ -118,7 +118,7 @@ public sealed class WebsiteSync(
         Source site, string startedById, ExtractedFile file, Dictionary<string, SyncedDocument> stored, CancellationToken cancellationToken)
     {
         if (queue.IsPending(site.CollectionId, file.Source)
-            || (stored.TryGetValue(file.Source, out var existing) && existing.ContentHash == DocumentStore.Hash(file.Bytes)))
+            || (stored.TryGetValue(file.Source, out var existing) && existing.ContentHash == Crypto.Sha256Hex(file.Bytes)))
         {
             return;
         }

@@ -7,8 +7,6 @@ namespace Lantrn.Services;
 
 public sealed class EmbeddingService(SettingsStore store, ILogger<EmbeddingService> logger) : IEmbeddingService
 {
-    private Connection? connection;
-
     public string Model => store.Current.Embeddings.Model;
 
     public async Task<IReadOnlyList<DocumentChunk>> EmbedChunksAsync(
@@ -17,19 +15,20 @@ public sealed class EmbeddingService(SettingsStore store, ILogger<EmbeddingServi
         CancellationToken cancellationToken = default)
     {
         // One snapshot for the whole batch, so a save halfway through cannot mix two models' vectors.
-        var current = Connect();
+        var settings = store.Current.Embeddings;
+        var client = CreateClient(settings);
         var embedded = new List<DocumentChunk>(chunks.Count);
         var stopwatch = Stopwatch.StartNew();
 
-        foreach (var batch in chunks.Chunk(Math.Max(1, current.Settings.BatchSize)))
+        foreach (var batch in chunks.Chunk(Math.Max(1, settings.BatchSize)))
         {
-            var vectors = await EmbedAsync(current, batch.Select(c => c.IndexText(source)).ToList(), cancellationToken);
+            var vectors = await EmbedAsync(settings, client, batch.Select(c => c.IndexText(source)).ToList(), cancellationToken);
             embedded.AddRange(batch.Zip(vectors, (chunk, vector) => chunk with { Embedding = vector }));
         }
 
         logger.LogInformation(
             "Embedded {Chunks} chunks with '{Model}' in {Elapsed:N0} ms ({Dimensions} dims)",
-            embedded.Count, current.Settings.Model, stopwatch.ElapsedMilliseconds,
+            embedded.Count, settings.Model, stopwatch.ElapsedMilliseconds,
             embedded.FirstOrDefault()?.Embedding.Length ?? 0);
 
         return embedded;
@@ -37,27 +36,20 @@ public sealed class EmbeddingService(SettingsStore store, ILogger<EmbeddingServi
 
     public async Task<float[]> EmbedQueryAsync(string query, CancellationToken cancellationToken = default)
     {
-        var current = Connect();
-        logger.LogInformation("Embedding query ({Length} chars) with '{Model}'", query.Length, current.Settings.Model);
+        var settings = store.Current.Embeddings;
+        logger.LogInformation("Embedding query ({Length} chars) with '{Model}'", query.Length, settings.Model);
 
         // Instruction-tuned models such as Qwen3-Embedding expect a task instruction on queries, not documents.
-        var vectors = await EmbedAsync(current, [current.Settings.QueryPrefix + query], cancellationToken);
+        var vectors = await EmbedAsync(settings, CreateClient(settings), [settings.QueryPrefix + query], cancellationToken);
         return vectors[0];
     }
 
-    // The SDK client fixes endpoint and model at construction, so it is rebuilt when the settings are saved.
-    private Connection Connect()
-    {
-        var settings = store.Current.Embeddings;
-        return connection is { } cached && ReferenceEquals(cached.Settings, settings)
-            ? cached
-            : connection = new Connection(settings, new EmbeddingClient(
-                settings.Model, OpenAiEndpoint.Credential(settings.ApiKey), OpenAiEndpoint.Options(settings)));
-    }
+    private static EmbeddingClient CreateClient(EmbeddingSettings settings) =>
+        new(settings.Model, OpenAiEndpoint.Credential(settings.ApiKey), OpenAiEndpoint.Options(settings));
 
-    private async Task<float[][]> EmbedAsync(Connection current, IReadOnlyList<string> inputs, CancellationToken cancellationToken)
+    private async Task<float[][]> EmbedAsync(
+        EmbeddingSettings settings, EmbeddingClient client, IReadOnlyList<string> inputs, CancellationToken cancellationToken)
     {
-        var settings = current.Settings;
         var generation = new EmbeddingGenerationOptions();
         if (settings.Dimensions is { } dimensions)
         {
@@ -67,7 +59,7 @@ public sealed class EmbeddingService(SettingsStore store, ILogger<EmbeddingServi
         OpenAIEmbeddingCollection result;
         try
         {
-            result = (await current.Client.GenerateEmbeddingsAsync(inputs, generation, cancellationToken)).Value;
+            result = (await client.GenerateEmbeddingsAsync(inputs, generation, cancellationToken)).Value;
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -84,6 +76,4 @@ public sealed class EmbeddingService(SettingsStore store, ILogger<EmbeddingServi
 
         return result.OrderBy(e => e.Index).Select(e => e.ToFloats().ToArray()).ToArray();
     }
-
-    private sealed record Connection(EmbeddingSettings Settings, EmbeddingClient Client);
 }

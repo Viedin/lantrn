@@ -1,5 +1,4 @@
 using System.Security.Claims;
-using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Lantrn.Infra;
 using Lantrn.Services.Accounts;
@@ -24,13 +23,18 @@ public sealed partial class DocumentStore(
     private readonly string originalsPath = Path.Combine(
         Path.GetFullPath(storage.Value.DataPath, environment.ContentRootPath), "originals");
 
+    private readonly SemaphoreSlim storing = new(1, 1);
+
     // Lowercase, so names read alike wherever they are shown.
-    [GeneratedRegex("^[a-z0-9][a-z0-9_-]{0,62}$")]
-    private static partial Regex CollectionNamePattern();
+    public const string CollectionNamePattern = "^[a-z0-9][a-z0-9_-]{0,62}$";
 
-    public static bool IsValidCollectionName(string name) => CollectionNamePattern().IsMatch(name);
+    public const string CollectionNameRule =
+        "Use lowercase letters, digits, '-' and '_' (starting with a letter or digit), at most 63 characters.";
 
-    public static string Hash(byte[] bytes) => Convert.ToHexString(SHA256.HashData(bytes));
+    [GeneratedRegex(CollectionNamePattern)]
+    private static partial Regex CollectionNameRegex();
+
+    public static bool IsValidCollectionName(string name) => CollectionNameRegex().IsMatch(name);
 
     // "CS-Docs, drafts ,cs-docs" -> ["cs-docs", "drafts"]
     public static IReadOnlyList<string> ParseTags(string? input) =>
@@ -74,6 +78,13 @@ public sealed partial class DocumentStore(
         return await db.Collections.AsNoTracking().WhereAllowed(user, access).AnyAsync(c => c.Id == id, cancellationToken);
     }
 
+    // For the public API, whose keys only work for admins, who reach every collection.
+    public async Task<bool> CollectionExistsAsync(Guid id, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await db.Collections.AsNoTracking().AnyAsync(c => c.Id == id, cancellationToken);
+    }
+
     // The Qdrant side is created on the first push, once the embedding size is known.
     public async Task<Guid> CreateCollectionAsync(
         string name,
@@ -84,8 +95,7 @@ public sealed partial class DocumentStore(
     {
         if (!IsValidCollectionName(name))
         {
-            throw new ArgumentException(
-                "Use lowercase letters, digits, '-' and '_' (starting with a letter or digit), at most 63 characters.");
+            throw new ArgumentException(CollectionNameRule);
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
@@ -248,7 +258,8 @@ public sealed partial class DocumentStore(
         }
         if (!string.IsNullOrWhiteSpace(sourceFilter))
         {
-            query = query.Where(d => EF.Functions.Like(d.Source, $"%{sourceFilter.Trim()}%"));
+            var filter = sourceFilter.Trim().ToLower();
+            query = query.Where(d => d.Source.ToLower().Contains(filter));
         }
 
         return await query
@@ -375,56 +386,66 @@ public sealed partial class DocumentStore(
         Guid? sourceId = null,
         CancellationToken cancellationToken = default)
     {
-        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-
-        // Queued jobs can outlive their collection, source or uploader. Checked before Qdrant is touched,
-        // since the save below would fail only after the points were written.
-        if (!await db.Collections.AsNoTracking().AnyAsync(c => c.Id == collectionId, cancellationToken))
+        // The API stores beside the ingest worker. Two stores of one source, or two first stores into a new collection,
+        // would both create what only one can, leaving points behind for a row that never saves.
+        await storing.WaitAsync(cancellationToken);
+        try
         {
-            throw new InvalidOperationException("The collection no longer exists.");
+            await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+
+            // Queued jobs can outlive their collection, source or uploader. Checked before Qdrant is touched,
+            // since the save below would fail only after the points were written.
+            if (!await db.Collections.AsNoTracking().AnyAsync(c => c.Id == collectionId, cancellationToken))
+            {
+                throw new InvalidOperationException("The collection no longer exists.");
+            }
+            if (sourceId is { } id && !await db.Sources.AsNoTracking().AnyAsync(s => s.Id == id, cancellationToken))
+            {
+                throw new InvalidOperationException("The website this came from is no longer synced.");
+            }
+            if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == addedById, cancellationToken))
+            {
+                throw new InvalidOperationException("The account that added this no longer exists.");
+            }
+
+            var document = await db.Documents
+                .Include(d => d.Tags)
+                .SingleOrDefaultAsync(d => d.CollectionId == collectionId && d.Source == source, cancellationToken);
+
+            if (document is null)
+            {
+                document = new Document { CollectionId = collectionId, Source = source, Markdown = result.Markdown, AddedById = addedById };
+                db.Documents.Add(document);
+            }
+
+            document.Markdown = result.Markdown;
+            document.Kind = result.Kind;
+            document.ContentHash = contentHash;
+            document.SourceId = sourceId;
+            document.AddedById = addedById;
+            document.ChunkCount = await qdrant.ReplaceDocumentAsync(
+                collectionId, source, document.Id, result.Kind, result.Chunks, tags, cancellationToken);
+            document.IngestedAt = DateTime.UtcNow;
+
+            var previousOriginal = document.OriginalFile;
+            document.OriginalFile = original is null ? null : await SaveOriginalAsync(document.Id, source, original, cancellationToken);
+            if (previousOriginal is not null && previousOriginal != document.OriginalFile)
+            {
+                DeleteOriginal(previousOriginal);
+            }
+
+            ApplyTags(document, tags);
+            await db.SaveChangesAsync(cancellationToken);
+
+            logger.LogInformation("Stored {Characters:N0} chars of markdown for {Source} in collection {CollectionId} as {DocumentId}",
+                result.Markdown.Length, source, collectionId, document.Id);
+
+            return new StoredDocument(document.Id, document.ChunkCount);
         }
-        if (sourceId is { } id && !await db.Sources.AsNoTracking().AnyAsync(s => s.Id == id, cancellationToken))
+        finally
         {
-            throw new InvalidOperationException("The website this came from is no longer synced.");
+            storing.Release();
         }
-        if (!await db.Users.AsNoTracking().AnyAsync(u => u.Id == addedById, cancellationToken))
-        {
-            throw new InvalidOperationException("The account that added this no longer exists.");
-        }
-
-        var document = await db.Documents
-            .Include(d => d.Tags)
-            .SingleOrDefaultAsync(d => d.CollectionId == collectionId && d.Source == source, cancellationToken);
-
-        if (document is null)
-        {
-            document = new Document { CollectionId = collectionId, Source = source, Markdown = result.Markdown, AddedById = addedById };
-            db.Documents.Add(document);
-        }
-
-        document.Markdown = result.Markdown;
-        document.Kind = result.Kind;
-        document.ContentHash = contentHash;
-        document.SourceId = sourceId;
-        document.AddedById = addedById;
-        document.ChunkCount = await qdrant.ReplaceDocumentAsync(
-            collectionId, source, document.Id, result.Kind, result.Chunks, tags, cancellationToken);
-        document.IngestedAt = DateTime.UtcNow;
-
-        var previousOriginal = document.OriginalFile;
-        document.OriginalFile = original is null ? null : await SaveOriginalAsync(document.Id, source, original, cancellationToken);
-        if (previousOriginal is not null && previousOriginal != document.OriginalFile)
-        {
-            DeleteOriginal(previousOriginal);
-        }
-
-        ApplyTags(document, tags);
-        await db.SaveChangesAsync(cancellationToken);
-
-        logger.LogInformation("Stored {Characters:N0} chars of markdown for {Source} in collection {CollectionId} as {DocumentId}",
-            result.Markdown.Length, source, collectionId, document.Id);
-
-        return new StoredDocument(document.Id, document.ChunkCount);
     }
 
     public async Task SetTagsAsync(Guid id, IReadOnlyList<string> tags, CancellationToken cancellationToken = default)

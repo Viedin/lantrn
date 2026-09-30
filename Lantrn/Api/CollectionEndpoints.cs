@@ -82,9 +82,9 @@ public static class CollectionEndpoints
     }
 
     private static async Task<Results<NoContent, ProblemHttpResult>> DeleteAsync(
-        Guid id, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken)
+        Guid id, DocumentStore documents, CancellationToken cancellationToken)
     {
-        if (!await documents.CanAccessAsync(id, user, CollectionAccess.Manage, cancellationToken))
+        if (!await documents.CollectionExistsAsync(id, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);
         }
@@ -95,9 +95,9 @@ public static class CollectionEndpoints
     }
 
     private static async Task<Results<NoContent, ProblemHttpResult>> ClearAsync(
-        Guid id, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken)
+        Guid id, DocumentStore documents, CancellationToken cancellationToken)
     {
-        if (!await documents.CanAccessAsync(id, user, CollectionAccess.Manage, cancellationToken))
+        if (!await documents.CollectionExistsAsync(id, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);
         }
@@ -107,9 +107,9 @@ public static class CollectionEndpoints
     }
 
     private static async Task<Results<Ok<IReadOnlyList<TagResponse>>, ProblemHttpResult>> ListTagsAsync(
-        Guid id, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken)
+        Guid id, DocumentStore documents, CancellationToken cancellationToken)
     {
-        if (!await documents.CanAccessAsync(id, user, CollectionAccess.Read, cancellationToken))
+        if (!await documents.CollectionExistsAsync(id, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);
         }

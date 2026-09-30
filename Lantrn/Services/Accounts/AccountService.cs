@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Lantrn.Infra;
 using Lantrn.Services.Ingestion;
 using Microsoft.AspNetCore.Identity;
@@ -27,28 +25,15 @@ public sealed class AccountService(
     // Registration decides between "first user, becomes admin" and "needs an invite"; two at once must not both be first.
     private readonly SemaphoreSlim registration = new(1, 1);
 
-    // Run once at startup: the role must exist, and an install from before roles keeps its users' access.
-    public async Task EnsureAdminAsync()
+    // Run once at startup, so the first account to register can be made admin.
+    public async Task EnsureAdminRoleAsync()
     {
         await using var scope = scopeFactory.CreateAsyncScope();
         var roles = scope.ServiceProvider.GetRequiredService<RoleManager<IdentityRole>>();
-        var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
 
         if (!await roles.RoleExistsAsync(Roles.Admin))
         {
             await roles.CreateAsync(new IdentityRole(Roles.Admin));
-        }
-
-        if ((await users.GetUsersInRoleAsync(Roles.Admin)).Count > 0)
-        {
-            return;
-        }
-
-        // Every account used to have full access, so nobody is locked out of the workspace they had.
-        foreach (var user in await users.Users.ToListAsync())
-        {
-            await users.AddToRoleAsync(user, Roles.Admin);
-            logger.LogInformation("Made {Email} an admin: no admin existed yet", user.Email);
         }
     }
 
@@ -156,13 +141,12 @@ public sealed class AccountService(
 
         await db.Invitations.Where(i => i.Email.ToUpper() == normalized).ExecuteDeleteAsync(cancellationToken);
 
-        var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var token = Crypto.NewToken();
         var now = DateTime.UtcNow;
         db.Invitations.Add(new Invitation
         {
             Email = email,
-            TokenHash = Hash(token),
+            TokenHash = Crypto.Sha256Hex(token),
             InvitedBy = invitedBy,
             CreatedAt = now,
             ExpiresAt = now + InvitationLifetime,
@@ -198,7 +182,7 @@ public sealed class AccountService(
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var hash = Hash(token);
+        var hash = Crypto.Sha256Hex(token);
         var now = DateTime.UtcNow;
         return await db.Invitations
             .AsNoTracking()
@@ -221,7 +205,7 @@ public sealed class AccountService(
             Invitation? invitation = null;
             if (!first)
             {
-                var hash = Hash(token ?? "");
+                var hash = Crypto.Sha256Hex(token ?? "");
                 var now = DateTime.UtcNow;
                 invitation = await db.Invitations.SingleOrDefaultAsync(i => i.TokenHash == hash && i.ExpiresAt > now);
                 if (invitation is null)
@@ -263,8 +247,6 @@ public sealed class AccountService(
             .AsNoTracking()
             .Where(ur => db.Roles.Any(r => r.Id == ur.RoleId && r.Name == Roles.Admin))
             .Select(ur => ur.UserId);
-
-    private static string Hash(string token) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(token)));
 
     private static IdentityResult Failed(string description) => IdentityResult.Failed(new IdentityError { Description = description });
 }

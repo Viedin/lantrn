@@ -18,8 +18,6 @@ public sealed class SearchAssistant(SettingsStore store, IQdrantStore qdrant, IL
         They may ask follow-up questions about the same sources; answer those the same way, citing the same numbers.
         """;
 
-    private Connection? connection;
-
     public bool Enabled => store.Current.Assistant.Enabled;
 
     public string Model => store.Current.Assistant.Model;
@@ -46,7 +44,8 @@ public sealed class SearchAssistant(SettingsStore store, IQdrantStore qdrant, IL
         IReadOnlyList<AnswerSource> sources, IReadOnlyList<ChatTurn> earlier, string question,
         [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
-        var (settings, client) = Connect();
+        var settings = store.Current.Assistant;
+        var client = new ChatClient(settings.Model, OpenAiEndpoint.Credential(settings.ApiKey), OpenAiEndpoint.Options(settings));
 
         logger.LogInformation("Answering {Question} from {Sources} sources after {Turns} turns with '{Model}'",
             question, sources.Count, earlier.Count, settings.Model);
@@ -122,18 +121,6 @@ public sealed class SearchAssistant(SettingsStore store, IQdrantStore qdrant, IL
         prompt.Append("Query: ").Append(query.Trim());
         return prompt.ToString();
     }
-
-    // The SDK client fixes endpoint and model at construction, so it is rebuilt when the settings are saved.
-    private Connection Connect()
-    {
-        var settings = store.Current.Assistant;
-        return connection is { } cached && ReferenceEquals(cached.Settings, settings)
-            ? cached
-            : connection = new Connection(settings, new ChatClient(
-                settings.Model, OpenAiEndpoint.Credential(settings.ApiKey), OpenAiEndpoint.Options(settings)));
-    }
-
-    private sealed record Connection(AssistantSettings Settings, ChatClient Client);
 }
 
 public sealed record ChatTurn(string Question, string Answer);

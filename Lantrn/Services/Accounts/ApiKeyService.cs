@@ -1,5 +1,3 @@
-using System.Security.Cryptography;
-using System.Text;
 using Lantrn.Infra;
 using Microsoft.EntityFrameworkCore;
 
@@ -36,8 +34,7 @@ public sealed class ApiKeyService(IDbContextFactory<DatabaseContext> dbFactory, 
             throw new ArgumentException("Give the key a name of at most 100 characters.");
         }
 
-        var key = KeyPrefix + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
-            .TrimEnd('=').Replace('+', '-').Replace('/', '_');
+        var key = KeyPrefix + Crypto.NewToken();
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         db.ApiKeys.Add(new ApiKey
@@ -45,7 +42,7 @@ public sealed class ApiKeyService(IDbContextFactory<DatabaseContext> dbFactory, 
             UserId = userId,
             Name = name,
             Prefix = key[..(KeyPrefix.Length + 6)],
-            KeyHash = Hash(key),
+            KeyHash = Crypto.Sha256Hex(key),
             CreatedAt = DateTime.UtcNow,
         });
         await db.SaveChangesAsync(cancellationToken);
@@ -71,7 +68,7 @@ public sealed class ApiKeyService(IDbContextFactory<DatabaseContext> dbFactory, 
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        var hash = Hash(key);
+        var hash = Crypto.Sha256Hex(key);
         var match = await db.ApiKeys
             .AsNoTracking()
             .Where(k => k.KeyHash == hash)
@@ -91,6 +88,4 @@ public sealed class ApiKeyService(IDbContextFactory<DatabaseContext> dbFactory, 
 
         return match.UserId;
     }
-
-    private static string Hash(string key) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(key)));
 }

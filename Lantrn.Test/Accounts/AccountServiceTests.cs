@@ -50,7 +50,7 @@ public class AccountServiceTests : IAsyncLifetime
             await db.Database.EnsureCreatedAsync();
         }
 
-        await accounts.EnsureAdminAsync();
+        await accounts.EnsureAdminRoleAsync();
     }
 
     [Fact]

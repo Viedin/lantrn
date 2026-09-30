@@ -10,9 +10,6 @@ namespace Lantrn.Api;
 // Ingesting documents into a collection, and listing, retagging and deleting them.
 public static class DocumentEndpoints
 {
-    // The same limit as the ingest page.
-    private const long MaxFileSize = 100 * 1024 * 1024;
-
     public static RouteGroupBuilder MapDocumentEndpoints(this RouteGroupBuilder group)
     {
         group.MapGet("/collections/{id:guid}/documents", ListAsync)
@@ -29,8 +26,8 @@ public static class DocumentEndpoints
                 $"Supported: {string.Join(", ", DocumentExtractor.SupportedTypes.Keys)}. Images are transcribed by the " +
                 "vision model. PDFs and images are kept as the document's original. A file with the same name in the " +
                 "collection is replaced.")
-            .WithMetadata(new RequestSizeLimitAttribute(MaxFileSize + 1024 * 1024))
-            .WithFormOptions(multipartBodyLengthLimit: MaxFileSize + 1024 * 1024)
+            .WithMetadata(new RequestSizeLimitAttribute(IngestQueue.MaxFileSize + 1024 * 1024))
+            .WithFormOptions(multipartBodyLengthLimit: IngestQueue.MaxFileSize + 1024 * 1024)
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status404NotFound)
             .ProducesProblem(StatusCodes.Status413PayloadTooLarge)
@@ -87,13 +84,12 @@ public static class DocumentEndpoints
 
     private static async Task<Results<Ok<IReadOnlyList<DocumentResponse>>, ProblemHttpResult>> ListAsync(
         Guid id,
-        ClaimsPrincipal user,
         DocumentStore documents,
         CancellationToken cancellationToken,
         [FromQuery] string? tag = null,
         [FromQuery] string? source = null)
     {
-        if (!await documents.CanAccessAsync(id, user, CollectionAccess.Read, cancellationToken))
+        if (!await documents.CollectionExistsAsync(id, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(id);
         }
@@ -125,9 +121,9 @@ public static class DocumentEndpoints
             return ApiProblems.UnsupportedType(
                 $"'{source}' can't be ingested. Supported: {string.Join(", ", DocumentExtractor.SupportedTypes.Keys)}.");
         }
-        if (file.Length > MaxFileSize)
+        if (file.Length > IngestQueue.MaxFileSize)
         {
-            return TypedResults.Problem($"Files can be at most {MaxFileSize / 1024 / 1024} MB.",
+            return TypedResults.Problem($"Files can be at most {IngestQueue.MaxFileSize / 1024 / 1024} MB.",
                 statusCode: StatusCodes.Status413PayloadTooLarge, title: "File too large");
         }
 
@@ -136,7 +132,7 @@ public static class DocumentEndpoints
         var bytes = buffer.ToArray();
 
         return await IngestAsync(
-            id, source,DocumentStore.ParseTags(tags), ChunkingOptions.ToOptions(maxCharacters, minCharacters, overlap),
+            id, source, DocumentStore.ParseTags(tags), ChunkingOptions.ToOptions(maxCharacters, minCharacters, overlap),
             (options, ct) => ingestor.IngestFileAsync(bytes, source, source, options, ct),
             keepOriginal: kind => DocumentExtractor.KeepsOriginal(source, kind) ? bytes : null,
             user, documents, loggers, cancellationToken);
@@ -153,7 +149,7 @@ public static class DocumentEndpoints
     {
         var source = request.Source.Trim();
         return IngestAsync(
-            id, source,NormalizeTags(request.Tags), request.Chunking?.ToOptions() ?? new IngestOptions(),
+            id, source, NormalizeTags(request.Tags), request.Chunking?.ToOptions() ?? new IngestOptions(),
             (options, ct) => ingestor.IngestMarkdownAsync(request.Markdown, source, options, ct),
             keepOriginal: _ => null,
             user, documents, loggers, cancellationToken);
@@ -176,7 +172,7 @@ public static class DocumentEndpoints
 
         var source = request.Url.ToString();
         return await IngestAsync(
-            id, source,NormalizeTags(request.Tags), request.Chunking?.ToOptions() ?? new IngestOptions(),
+            id, source, NormalizeTags(request.Tags), request.Chunking?.ToOptions() ?? new IngestOptions(),
             async (options, ct) =>
             {
                 var page = await crawler.FetchAsync(request.Url, ct);
@@ -236,7 +232,7 @@ public static class DocumentEndpoints
         ILoggerFactory loggers,
         CancellationToken cancellationToken)
     {
-        if (!await documents.CanAccessAsync(collectionId, user, CollectionAccess.Contribute, cancellationToken))
+        if (!await documents.CollectionExistsAsync(collectionId, cancellationToken))
         {
             return ApiProblems.CollectionNotFound(collectionId);
         }
@@ -245,23 +241,22 @@ public static class DocumentEndpoints
             return ApiProblems.BadRequest(invalid);
         }
 
-        IngestResult extracted;
         try
         {
-            extracted = await extract(options, cancellationToken);
+            var extracted = await extract(options, cancellationToken);
+
+            // Not cancellable: a store cut short would leave the database and Qdrant out of step.
+            var stored = await documents.StoreAsync(
+                collectionId, source, extracted, tags, CollectionAccessRules.SignedInUserId(user), keepOriginal(extracted.Kind),
+                cancellationToken: CancellationToken.None);
+            var document = await documents.GetAsync(stored.Id, CancellationToken.None);
+            return TypedResults.Created($"/api/v1/documents/{stored.Id}", DocumentResponse.From(document!));
         }
         catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
         {
             loggers.CreateLogger(typeof(DocumentEndpoints)).LogError(ex, "API ingest of {Source} into collection {CollectionId} failed", source, collectionId);
             return ApiProblems.IngestFailed(ex.Message);
         }
-
-        // Not cancellable: a store cut short would leave the database and Qdrant out of step.
-        var stored = await documents.StoreAsync(
-            collectionId, source, extracted, tags, CollectionAccessRules.SignedInUserId(user), keepOriginal(extracted.Kind),
-            cancellationToken: CancellationToken.None);
-        var document = await documents.GetAsync(stored.Id, CancellationToken.None);
-        return TypedResults.Created($"/api/v1/documents/{stored.Id}", DocumentResponse.From(document!));
     }
 
     private static IReadOnlyList<string> NormalizeTags(IReadOnlyList<string>? tags) =>

@@ -106,6 +106,13 @@ public sealed class QdrantStore(QdrantClient client, SettingsStore store, ILogge
         CancellationToken cancellationToken = default)
     {
         var collection = Name(collectionId);
+
+        // Created on the first upsert, so an empty collection, or one being re-embedded, has nothing to search yet.
+        if (!await client.CollectionExistsAsync(collection, cancellationToken))
+        {
+            return new SearchResults([], ScoreKind.Similarity);
+        }
+
         // A query of only punctuation or single letters has no keywords to match on.
         var hybrid = SearchTerms.Of(queryText).Count > 0;
 

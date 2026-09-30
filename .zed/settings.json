@@ -1,7 +1,0 @@
-{
-  "languages": {
-    "CSharp": {
-      "language_servers": ["roslyn"]
-    }
-  }
-}

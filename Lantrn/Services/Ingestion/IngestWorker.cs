@@ -70,7 +70,7 @@ public sealed class IngestWorker(
         var original = request.KeepOriginal && DocumentExtractor.KeepsOriginal(request.FileName, extracted.Kind) ? bytes : null;
         var stored = await documents.StoreAsync(
             request.CollectionId, request.Source, extracted, request.Tags, request.AddedById, original,
-            DocumentStore.Hash(bytes), request.SourceId, CancellationToken.None);
+            Crypto.Sha256Hex(bytes), request.SourceId, CancellationToken.None);
 
         return (extracted, stored.Id);
     }

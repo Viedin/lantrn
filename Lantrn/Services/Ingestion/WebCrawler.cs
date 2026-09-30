@@ -34,6 +34,8 @@ public sealed class WebCrawler(HttpClient http, ILogger<WebCrawler> logger)
         ".zip", ".gz", ".mp4", ".webm", ".mp3", ".woff", ".woff2", ".ttf",
     };
 
+    private static readonly byte[] Nat64Prefix = [0x00, 0x64, 0xff, 0x9b, 0, 0, 0, 0, 0, 0, 0, 0];
+
     // Checks addresses at connect time rather than per URL, so neither the start URL, a redirect
     // nor a DNS answer that changes between check and fetch can reach this machine or its network.
     public static SocketsHttpHandler CreateHandler() => new()
@@ -192,16 +194,25 @@ public sealed class WebCrawler(HttpClient http, ILogger<WebCrawler> logger)
 
         if (address.AddressFamily == AddressFamily.InterNetworkV6)
         {
-            return !(address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6UniqueLocal);
+            // NAT64 (64:ff9b::/96) reaches the IPv4 address in its last four bytes.
+            var v6 = address.GetAddressBytes();
+            if (v6.AsSpan(0, 12).SequenceEqual(Nat64Prefix))
+            {
+                return IsPublic(new IPAddress(v6.AsSpan(12)));
+            }
+
+            return !(address.IsIPv6LinkLocal || address.IsIPv6SiteLocal || address.IsIPv6UniqueLocal || address.IsIPv6Multicast);
         }
 
-        // 0/8, 10/8, 100.64/10 (carrier-grade NAT), 169.254/16 (link-local, cloud metadata), 172.16/12, 192.168/16.
+        // 0/8, 10/8, 100.64/10 (carrier-grade NAT), 169.254/16 (link-local, cloud metadata), 172.16/12, 192.168/16,
+        // 198.18/15 (benchmarking), and 224/4 and up (multicast, reserved, broadcast).
         var b = address.GetAddressBytes();
-        return !(b[0] is 0 or 10
+        return !(b[0] is 0 or 10 or >= 224
                  || (b[0] == 100 && b[1] is >= 64 and < 128)
                  || (b[0] == 169 && b[1] == 254)
                  || (b[0] == 172 && b[1] is >= 16 and < 32)
-                 || (b[0] == 192 && b[1] == 168));
+                 || (b[0] == 192 && b[1] == 168)
+                 || (b[0] == 198 && b[1] is 18 or 19));
     }
 
     private static Uri Normalize(Uri url)

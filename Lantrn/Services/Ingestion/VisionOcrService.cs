@@ -16,8 +16,6 @@ public sealed class VisionOcrService(SettingsStore store, ILogger<VisionOcrServi
         If the image contains no legible text, answer with nothing at all.
         """;
 
-    private Connection? connection;
-
     public string Model => store.Current.Vision.Model;
 
     public async Task<string> ReadImageAsync(byte[] bytes, string fileName, CancellationToken cancellationToken = default)
@@ -27,7 +25,8 @@ public sealed class VisionOcrService(SettingsStore store, ILogger<VisionOcrServi
             throw new NotSupportedException($"'{fileName}' is not a supported image.");
         }
 
-        var (settings, client) = Connect();
+        var settings = store.Current.Vision;
+        var client = new ChatClient(settings.Model, OpenAiEndpoint.Credential(settings.ApiKey), OpenAiEndpoint.Options(settings));
 
         logger.LogInformation("Reading {FileName} ({Bytes:N0} bytes, {ContentType}) with '{Model}'",
             fileName, bytes.Length, contentType, settings.Model);
@@ -61,16 +60,6 @@ public sealed class VisionOcrService(SettingsStore store, ILogger<VisionOcrServi
         return markdown;
     }
 
-    // The SDK client fixes endpoint and model at construction, so it is rebuilt when the settings are saved.
-    private Connection Connect()
-    {
-        var settings = store.Current.Vision;
-        return connection is { } cached && ReferenceEquals(cached.Settings, settings)
-            ? cached
-            : connection = new Connection(settings, new ChatClient(
-                settings.Model, OpenAiEndpoint.Credential(settings.ApiKey), OpenAiEndpoint.Options(settings)));
-    }
-
     // Models asked not to fence their answer sometimes do anyway.
     private static string StripCodeFence(string text)
     {
@@ -82,6 +71,4 @@ public sealed class VisionOcrService(SettingsStore store, ILogger<VisionOcrServi
         var firstNewline = text.IndexOf('\n');
         return firstNewline < 0 ? string.Empty : text[(firstNewline + 1)..^3].Trim();
     }
-
-    private sealed record Connection(VisionSettings Settings, ChatClient Client);
 }
