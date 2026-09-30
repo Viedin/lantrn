@@ -1,7 +1,9 @@
+using System.Security.Claims;
 using Lantrn.Infra;
 using Lantrn.Services.Ingestion;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace Lantrn.Services.Accounts;
 
@@ -18,6 +20,7 @@ public sealed class AccountService(
     SourceStore sources,
     IngestQueue queue,
     SourceSyncService sync,
+    IOptions<OidcOptions> oidc,
     ILogger<AccountService> logger)
 {
     public static readonly TimeSpan InvitationLifetime = TimeSpan.FromDays(7);
@@ -66,6 +69,11 @@ public sealed class AccountService(
         {
             return Failed("That user no longer exists.");
         }
+        return await SetAdminAsync(users, user, admin);
+    }
+
+    private async Task<IdentityResult> SetAdminAsync(UserManager<ApplicationUser> users, ApplicationUser user, bool admin)
+    {
         if (await users.IsInRoleAsync(user, Roles.Admin) == admin)
         {
             return IdentityResult.Success;
@@ -242,6 +250,113 @@ public sealed class AccountService(
         }
     }
 
+    // A known login signs straight in. A new one is linked to the account with its verified email; with no such account
+    // it needs an invite or auto-provisioning, unless it's the very first account, which becomes admin like a registration.
+    public async Task<ExternalSignInResult> SignInExternalAsync(ExternalLoginInfo info)
+    {
+        await registration.WaitAsync();
+        try
+        {
+            await using var scope = scopeFactory.CreateAsyncScope();
+            var users = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+
+            // A subject is only unique at its issuer, so logins are kept per issuer: after switching providers, a
+            // reused subject can't sign into an old account, and people are matched by email again instead.
+            var provider = info.Principal.FindFirst("sub")?.Issuer ?? info.LoginProvider;
+            var user = await users.FindByLoginAsync(provider, info.ProviderKey);
+            if (user is null)
+            {
+                var email = info.Principal.FindFirstValue("email");
+                if (string.IsNullOrEmpty(email) || !(oidc.Value.TrustEmail || HasVerifiedEmail(info.Principal)))
+                {
+                    logger.LogWarning("Refused a login from {Provider} without a verified email ({Email})", provider, email ?? "none");
+                    return new ExternalSignInResult(null, ExternalSignInError.NoVerifiedEmail);
+                }
+
+                user = await users.FindByEmailAsync(email);
+                if (user is null)
+                {
+                    var created = await CreateExternalUserAsync(scope.ServiceProvider.GetRequiredService<DatabaseContext>(), users, email);
+                    if (created.User is null)
+                    {
+                        return created;
+                    }
+                    user = created.User;
+                }
+
+                var linked = await users.AddLoginAsync(user, new UserLoginInfo(provider, info.ProviderKey, info.ProviderDisplayName));
+                if (!linked.Succeeded)
+                {
+                    logger.LogWarning("Couldn't link a login from {Provider} to {Email}: {Errors}", provider, email, Describe(linked));
+                    return new ExternalSignInResult(null, ExternalSignInError.Failed);
+                }
+                logger.LogInformation("Linked a login from {Provider} to {Email}", provider, email);
+            }
+
+            if (oidc.Value.AdminGroup is { Length: > 0 } adminGroup)
+            {
+                // Some providers leave the claim out for someone in no groups, so this can be expected; a provider
+                // that sends none at all, though, demotes every admin but the last.
+                if (!info.Principal.HasClaim(c => c.Type == OidcOptions.GroupsClaim))
+                {
+                    logger.LogWarning("{Email} signed in without a groups claim, so isn't in {AdminGroup}. If they should be, " +
+                        "check that the provider sends groups and that Oidc__Scope asks for them", user.Email, adminGroup);
+                }
+                var synced = await SetAdminAsync(users, user, info.Principal.HasClaim(OidcOptions.GroupsClaim, adminGroup));
+                if (!synced.Succeeded)
+                {
+                    logger.LogWarning("Kept the admin role for {Email}: {Errors}", user.Email, Describe(synced));
+                }
+            }
+
+            return new ExternalSignInResult(user, null);
+        }
+        finally
+        {
+            registration.Release();
+        }
+    }
+
+    private async Task<ExternalSignInResult> CreateExternalUserAsync(DatabaseContext db, UserManager<ApplicationUser> users, string email)
+    {
+        var first = !await db.Users.AsNoTracking().AnyAsync();
+        var normalized = email.ToUpperInvariant();
+        var now = DateTime.UtcNow;
+        var invitation = await db.Invitations.FirstOrDefaultAsync(i => i.Email.ToUpper() == normalized && i.ExpiresAt > now);
+        if (!first && invitation is null && !oidc.Value.AutoProvision)
+        {
+            logger.LogInformation("Refused single sign-on for {Email}: no account or invite", email);
+            return new ExternalSignInResult(null, ExternalSignInError.NotInvited, email);
+        }
+
+        var user = new ApplicationUser { UserName = email, Email = email, EmailConfirmed = true };
+        var result = await users.CreateAsync(user);
+        if (!result.Succeeded)
+        {
+            logger.LogWarning("Couldn't create an account for {Email}: {Errors}", email, Describe(result));
+            return new ExternalSignInResult(null, ExternalSignInError.Failed);
+        }
+
+        if (first)
+        {
+            await users.AddToRoleAsync(user, Roles.Admin);
+        }
+        if (invitation is not null)
+        {
+            db.Invitations.Remove(invitation);
+            await db.SaveChangesAsync();
+        }
+
+        logger.LogInformation("Created account {Email} through single sign-on{Admin}", email, first ? " as the first admin" : "");
+        return new ExternalSignInResult(user, null);
+    }
+
+    // Anyone can put any address on an account at some providers; only a verified one says who they are.
+    private static bool HasVerifiedEmail(ClaimsPrincipal principal) =>
+        string.Equals(principal.FindFirstValue("email_verified"), "true", StringComparison.OrdinalIgnoreCase);
+
+    private static string Describe(IdentityResult result) => string.Join(" ", result.Errors.Select(e => e.Description));
+
     private static IQueryable<string> AdminIds(DatabaseContext db) =>
         db.UserRoles
             .AsNoTracking()
@@ -252,3 +367,8 @@ public sealed class AccountService(
 }
 
 public sealed record RegistrationResult(IdentityResult Result, ApplicationUser? User);
+
+public enum ExternalSignInError { Failed, NoVerifiedEmail, NotInvited }
+
+// Email is the address the provider gave, when that is what the error is about.
+public sealed record ExternalSignInResult(ApplicationUser? User, ExternalSignInError? Error, string? Email = null);

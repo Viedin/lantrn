@@ -1,0 +1,33 @@
+@using Microsoft.Extensions.Options
+
+@inject IOptions<OidcOptions> Oidc
+
+@if (Oidc.Value.Enabled)
+{
+    @* A plain post, not an enhanced one: the response sends the browser on to the identity provider. *@
+    <form method="post" action="account/external-login">
+        <AntiforgeryToken />
+        <input type="hidden" name="returnUrl" value="@ReturnUrl" />
+        @if (SwitchAccount)
+        {
+            <input type="hidden" name="switchAccount" value="true" />
+        }
+        <button type="submit" class="btn @(Oidc.Value.LocalLogin ? "btn-outline-secondary" : "btn-primary") w-100">
+            <i class="bi bi-box-arrow-in-right" aria-hidden="true"></i> @Oidc.Value.DisplayName
+        </button>
+    </form>
+
+    @if (Oidc.Value.LocalLogin)
+    {
+        <div class="auth-divider">or</div>
+    }
+}
+
+@code {
+    [Parameter]
+    public string? ReturnUrl { get; set; }
+
+    // After a refused sign-in the provider still has that account signed in; this makes it ask again.
+    [Parameter]
+    public bool SwitchAccount { get; set; }
+}

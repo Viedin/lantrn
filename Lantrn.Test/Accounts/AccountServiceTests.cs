@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Lantrn.Infra;
 using Lantrn.Services.Accounts;
 using Lantrn.Startup;
@@ -8,6 +9,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Options;
 using NSubstitute;
 
 namespace Lantrn.Test.Accounts;
@@ -38,7 +40,7 @@ public class AccountServiceTests : IAsyncLifetime
             .AddSingleton<IConfiguration>(configuration)
             .AddSingleton<IHostEnvironment>(environment)
             .AddCoreServices(configuration, environment)
-            .AddSiteAuthentication()
+            .AddSiteAuthentication(configuration, environment)
             .BuildServiceProvider();
         accounts = services.GetRequiredService<AccountService>();
     }
@@ -156,6 +158,143 @@ public class AccountServiceTests : IAsyncLifetime
 
         Assert.True((await accounts.SetAdminAsync(first.Id, false)).Succeeded);
         Assert.False(await IsAdminAsync("first@example.com"));
+    }
+
+    [Fact]
+    public async Task A_new_login_is_linked_to_the_account_with_its_verified_email()
+    {
+        var first = (await accounts.RegisterAsync("first@example.com", Password, null)).User!;
+
+        var linked = await accounts.SignInExternalAsync(Login("First@Example.com"));
+        var again = await accounts.SignInExternalAsync(Login("First@Example.com"));
+
+        Assert.Equal(first.Id, linked.User?.Id);
+        Assert.Equal(first.Id, again.User?.Id);
+        Assert.Single(await accounts.ListUsersAsync());
+    }
+
+    [Fact]
+    public async Task An_unverified_email_is_neither_linked_nor_given_an_account()
+    {
+        await accounts.RegisterAsync("first@example.com", Password, null);
+        await accounts.CreateInvitationAsync("bob@example.com", null);
+        Oidc.AutoProvision = true;
+
+        Assert.Equal(ExternalSignInError.NoVerifiedEmail, (await accounts.SignInExternalAsync(Login("first@example.com", verified: false))).Error);
+        Assert.Equal(ExternalSignInError.NoVerifiedEmail, (await accounts.SignInExternalAsync(Login("bob@example.com", verified: false))).Error);
+        Assert.Single(await accounts.ListUsersAsync());
+    }
+
+    [Fact]
+    public async Task A_trusted_provider_needs_no_verified_flag()
+    {
+        await accounts.RegisterAsync("first@example.com", Password, null);
+        Oidc.TrustEmail = true;
+
+        var signedIn = await accounts.SignInExternalAsync(Login("first@example.com", verified: false));
+
+        Assert.NotNull(signedIn.User);
+    }
+
+    [Fact]
+    public async Task A_subject_from_another_issuer_doesnt_sign_into_the_old_account()
+    {
+        await accounts.RegisterAsync("first@example.com", Password, null);
+        await accounts.SignInExternalAsync(Login("first@example.com", subject: "42"));
+
+        var other = await accounts.SignInExternalAsync(Login("bob@example.com", subject: "42", issuer: "https://other.example.com"));
+
+        Assert.Null(other.User);
+        Assert.Equal(ExternalSignInError.NotInvited, other.Error);
+        Assert.Equal("bob@example.com", other.Email);
+    }
+
+    [Fact]
+    public async Task The_first_login_becomes_admin()
+    {
+        var signedIn = await accounts.SignInExternalAsync(Login("first@example.com"));
+
+        Assert.NotNull(signedIn.User);
+        Assert.True(await IsAdminAsync("first@example.com"));
+    }
+
+    [Fact]
+    public async Task An_uninvited_login_gets_no_account()
+    {
+        await accounts.RegisterAsync("first@example.com", Password, null);
+
+        var signedIn = await accounts.SignInExternalAsync(Login("bob@example.com"));
+
+        Assert.Equal(ExternalSignInError.NotInvited, signedIn.Error);
+        Assert.Null(await FindUserAsync("bob@example.com"));
+    }
+
+    [Fact]
+    public async Task An_invited_login_gets_an_account_and_uses_up_the_invite()
+    {
+        await accounts.RegisterAsync("first@example.com", Password, null);
+        var token = await accounts.CreateInvitationAsync("bob@example.com", null);
+
+        var signedIn = await accounts.SignInExternalAsync(Login("Bob@Example.com"));
+
+        Assert.NotNull(signedIn.User);
+        Assert.False(await IsAdminAsync("bob@example.com"));
+        Assert.Null(await accounts.FindInvitationAsync(token));
+    }
+
+    [Fact]
+    public async Task Auto_provisioning_gives_any_verified_login_an_account()
+    {
+        await accounts.RegisterAsync("first@example.com", Password, null);
+        Oidc.AutoProvision = true;
+
+        var signedIn = await accounts.SignInExternalAsync(Login("bob@example.com"));
+
+        Assert.NotNull(signedIn.User);
+        Assert.False(await IsAdminAsync("bob@example.com"));
+    }
+
+    [Fact]
+    public async Task The_admin_group_grants_and_removes_the_role_on_each_login()
+    {
+        await accounts.RegisterAsync("first@example.com", Password, null);
+        await accounts.CreateInvitationAsync("bob@example.com", null);
+        Oidc.AdminGroup = "lantrn-admins";
+
+        await accounts.SignInExternalAsync(Login("bob@example.com", groups: ["staff", "lantrn-admins"]));
+        Assert.True(await IsAdminAsync("bob@example.com"));
+
+        await accounts.SignInExternalAsync(Login("bob@example.com", groups: ["staff"]));
+        Assert.False(await IsAdminAsync("bob@example.com"));
+    }
+
+    [Fact]
+    public async Task The_admin_group_never_removes_the_last_admin()
+    {
+        Oidc.AdminGroup = "lantrn-admins";
+
+        await accounts.SignInExternalAsync(Login("first@example.com"));
+        var again = await accounts.SignInExternalAsync(Login("first@example.com"));
+
+        Assert.NotNull(again.User);
+        Assert.True(await IsAdminAsync("first@example.com"));
+    }
+
+    private OidcOptions Oidc => services.GetRequiredService<IOptions<OidcOptions>>().Value;
+
+    // By default the subject comes from the address, so the same person signing in again presents the same login.
+    private static ExternalLoginInfo Login(
+        string email, bool verified = true, string[]? groups = null, string issuer = "https://provider.example.com", string? subject = null)
+    {
+        subject ??= $"subject-{email.ToLowerInvariant()}";
+        var claims = new List<Claim>
+        {
+            new("sub", subject, ClaimValueTypes.String, issuer),
+            new("email", email),
+            new("email_verified", verified ? "True" : "False"),
+        };
+        claims.AddRange((groups ?? []).Select(group => new Claim(OidcOptions.GroupsClaim, group)));
+        return new ExternalLoginInfo(new ClaimsPrincipal(new ClaimsIdentity(claims, OidcOptions.Scheme)), OidcOptions.Scheme, subject, "SSO");
     }
 
     private async Task<ApplicationUser?> FindUserAsync(string email)

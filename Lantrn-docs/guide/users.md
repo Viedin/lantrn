@@ -26,6 +26,8 @@ Registration is invite-only after the first account.
 
 Invites expire after **7 days** and can be used once. Creating a new invite for the same email replaces the old one.
 
+With [single sign-on](./sso), the invited person can sign in through the provider instead of choosing a password.
+
 ## Public search
 
 In **Settings → Public search** you can let anyone search and read public collections without signing in. It is **off** by default.
