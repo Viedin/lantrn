@@ -5,8 +5,8 @@ using Microsoft.AspNetCore.Authentication;
 
 namespace Lantrn.Api;
 
-// The public API: everything an admin does to collections and documents in the workspace, for scripts and integrations.
-// Every endpoint needs an admin's API key; the OpenAPI document and the reference page are public.
+// The public API and the MCP server: everything an admin does to collections and documents in the workspace, for scripts,
+// integrations and AI assistants. Every call needs an admin's API key; the OpenAPI document and the reference page are public.
 public static class PublicApi
 {
     public const string Policy = "PublicApi";
@@ -18,6 +18,8 @@ public static class PublicApi
     public const string SpecPath = $"/api/openapi/{DocumentName}.json";
 
     public const string ReferencePath = "/api/reference";
+
+    public const string McpPath = "/mcp";
 
     public static IServiceCollection AddPublicApi(this IServiceCollection services)
     {
@@ -45,10 +47,16 @@ public static class PublicApi
             options.AddOperationTransformer<PublicApiOperationTransformer>();
         });
 
+        services.AddHttpContextAccessor();
+        services.AddMcpServer(options => options.ServerInstructions = LibraryTools.Instructions)
+            .WithHttpTransport()
+            .WithTools<LibraryTools>(LibraryTools.SerializerOptions);
+
         return services;
     }
 
-    public static bool IsApiRequest(HttpContext context) => context.Request.Path.StartsWithSegments(BasePath);
+    public static bool IsApiRequest(HttpContext context) =>
+        context.Request.Path.StartsWithSegments(BasePath) || context.Request.Path.StartsWithSegments(McpPath);
 
     public static IEndpointRouteBuilder MapPublicApi(this IEndpointRouteBuilder app)
     {
@@ -66,6 +74,10 @@ public static class PublicApi
         api.MapGroup("")
             .WithTags(PublicApiDocumentTransformer.DocumentsTag)
             .MapDocumentEndpoints();
+
+        app.MapMcp(McpPath)
+            .RequireAuthorization(Policy)
+            .DisableAntiforgery();
 
         return app;
     }

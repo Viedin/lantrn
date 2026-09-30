@@ -2,7 +2,7 @@
 # The full reference, generated from the OpenAPI document, is at {{baseUrl}}/api/reference.
 
 @baseUrl = http://localhost:5081
-@apiKey = lnt_paste-your-key-here
+@apiKey = lnt-paste-your-key-here
 @collection = handbook
 
 ### OpenAPI document (no key needed)

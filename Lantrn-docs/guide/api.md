@@ -1,6 +1,6 @@
 # Public API
 
-The API lets scripts and integrations do what an admin does in **Collections** and **Ingest**: create and delete collections, add documents and manage the ones already there.
+The API lets scripts and integrations do what an admin does in **Search**, **Collections** and **Ingest**: search, create and delete collections, add documents and manage the ones already there.
 
 The full reference lives in Lantrn itself at **Developers → API reference** (`/api/reference`). It is generated from the OpenAPI document at `/api/openapi/v1.json`, which you can also load into Postman, Insomnia or a client generator.
 
@@ -20,6 +20,17 @@ curl https://lantrn.example.com/api/v1/collections \
 ```
 
 A key acts as the admin who created it. It stops working if you revoke it, or if that user stops being an admin or is removed.
+
+## Searching
+
+`GET /api/v1/collections/{id}/search` searches one collection the same way the Search page does:
+
+```sh
+curl "https://lantrn.example.com/api/v1/collections/$COLLECTION_ID/search?q=parental+leave&tags=hr&limit=5" \
+  -H "Authorization: Bearer $LANTRN_API_KEY"
+```
+
+Each hit is a passage with the id of its document, which `GET /api/v1/documents/{id}` returns in full.
 
 ## Ingesting documents
 

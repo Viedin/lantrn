@@ -8,7 +8,7 @@ using Microsoft.Net.Http.Headers;
 
 namespace Lantrn.Api;
 
-// Signs API requests in as the owner of the key in "Authorization: Bearer lnt_...". The principal is built from the
+// Signs API requests in as the owner of the key in "Authorization: Bearer lnt-...". The principal is built from the
 // user as they are now, so a role taken away or an account removed applies to the very next request.
 public sealed class ApiKeyAuthenticationHandler(
     IOptionsMonitor<AuthenticationSchemeOptions> options,

@@ -1,13 +1,20 @@
 using System.Security.Claims;
+using Lantrn.Infra;
 using Lantrn.Services;
 using Lantrn.Services.Accounts;
+using Lantrn.Services.Search;
 using Microsoft.AspNetCore.Http.HttpResults;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Lantrn.Api;
 
-// /api/v1/collections: creating, inspecting, clearing and deleting collections.
+// /api/v1/collections: creating, inspecting, searching, clearing and deleting collections.
 public static class CollectionEndpoints
 {
+    public const int DefaultSearchLimit = 10;
+
+    public const int MaxSearchLimit = 50;
+
     public static RouteGroupBuilder MapCollectionEndpoints(this RouteGroupBuilder group)
     {
         group.MapGet("", ListAsync)
@@ -19,6 +26,18 @@ public static class CollectionEndpoints
             .WithName("GetCollection")
             .WithSummary("Get a collection")
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        group.MapGet("/{id:guid}/search", SearchAsync)
+            .WithName("SearchCollection")
+            .WithSummary("Search a collection")
+            .WithDescription(
+                "Finds the passages that best match q, by meaning and by keywords, like the Search page. " +
+                "Filter with tags (comma-separated; any of them matches) and kind (Text or Ocr), and set how many " +
+                $"passages to return with limit (1 to {MaxSearchLimit}, {DefaultSearchLimit} by default). " +
+                "Overlapping passages from the same document are merged.")
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status404NotFound)
+            .ProducesProblem(StatusCodes.Status502BadGateway);
 
         group.MapPost("", CreateAsync)
             .WithName("CreateCollection")
@@ -62,6 +81,42 @@ public static class CollectionEndpoints
         await documents.GetCollectionAsync(id, user, CollectionAccess.Read, cancellationToken) is { } collection
             ? TypedResults.Ok(CollectionResponse.From(collection))
             : ApiProblems.CollectionNotFound(id);
+
+    private static async Task<Results<Ok<SearchResponse>, ProblemHttpResult>> SearchAsync(
+        Guid id,
+        DocumentStore documents,
+        SearchService search,
+        ILoggerFactory loggers,
+        CancellationToken cancellationToken,
+        [FromQuery] string? q = null,
+        [FromQuery] string? tags = null,
+        [FromQuery] DocumentKind? kind = null,
+        [FromQuery] int limit = DefaultSearchLimit)
+    {
+        if (string.IsNullOrWhiteSpace(q))
+        {
+            return ApiProblems.BadRequest("Give a query in q.");
+        }
+        if (limit is < 1 or > MaxSearchLimit)
+        {
+            return ApiProblems.BadRequest($"The limit must be between 1 and {MaxSearchLimit}.");
+        }
+        if (!await documents.CollectionExistsAsync(id, cancellationToken))
+        {
+            return ApiProblems.CollectionNotFound(id);
+        }
+
+        try
+        {
+            var results = await search.SearchAsync(id, q.Trim(), DocumentStore.ParseTags(tags), kind, limit, cancellationToken);
+            return TypedResults.Ok(SearchResponse.From(results));
+        }
+        catch (Exception ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            loggers.CreateLogger(typeof(CollectionEndpoints)).LogError(ex, "API search in collection {CollectionId} failed", id);
+            return ApiProblems.SearchFailed(ex.Message);
+        }
+    }
 
     private static async Task<Results<Created<CollectionResponse>, ProblemHttpResult>> CreateAsync(
         CreateCollectionRequest request, ClaimsPrincipal user, DocumentStore documents, CancellationToken cancellationToken)

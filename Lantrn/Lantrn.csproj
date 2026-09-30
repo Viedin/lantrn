@@ -21,6 +21,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.12" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" Version="2.2.0" />
     <PackageReference Include="OpenAI" Version="2.14.0" />
     <PackageReference Include="Qdrant.Client" Version="1.19.0" />
     <PackageReference Include="XbergIo.Xberg" Version="1.2.8" />

@@ -26,4 +26,8 @@ internal static class ApiProblems
     // The document could not be read, chunked or embedded; the message says which, as it does on the ingest page.
     public static ProblemHttpResult IngestFailed(string detail) =>
         TypedResults.Problem(detail, statusCode: StatusCodes.Status422UnprocessableEntity, title: "Ingest failed");
+
+    // The embedding endpoint or Qdrant didn't answer; the message says which, as it does on the Search page.
+    public static ProblemHttpResult SearchFailed(string detail) =>
+        TypedResults.Problem(detail, statusCode: StatusCodes.Status502BadGateway, title: "Search failed");
 }

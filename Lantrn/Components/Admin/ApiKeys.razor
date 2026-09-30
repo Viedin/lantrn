@@ -16,9 +16,9 @@
     <span class="eyebrow">Admin</span>
     <h1>API keys</h1>
     <p class="lead-text">
-        Keys let scripts and integrations manage collections and ingest documents through the
-        <a href="@PublicApi.ReferencePath.TrimStart('/')">public API</a>. A key acts as you, and stops working if you
-        stop being an admin.
+        Keys let scripts and integrations search, manage collections and ingest documents through the
+        <a href="@PublicApi.ReferencePath.TrimStart('/')">public API</a>, and AI assistants search through the MCP
+        server at <code>@McpUrl</code>. A key acts as you, and stops working if you stop being an admin.
     </p>
 </div>
 
@@ -124,6 +124,8 @@
     private ApiKeySummary? revoking;
     private bool busy;
     private string? error;
+
+    private string McpUrl => Navigation.ToAbsoluteUri(PublicApi.McpPath.TrimStart('/')).ToString();
 
     protected override async Task OnInitializedAsync()
     {
