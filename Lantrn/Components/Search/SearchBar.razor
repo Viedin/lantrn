@@ -1,8 +1,11 @@
 <div class="searchbar @(Busy ? "is-busy" : null)">
     <i class="bi bi-search searchbar-icon" aria-hidden="true"></i>
 
-    <input @ref="Input" class="searchbar-input" @bind:get="Value" @bind:set="value => ValueChanged.InvokeAsync(value)" @bind:event="oninput"
-           @onkeydown="OnKeyDownAsync" placeholder="Ask for a passage by meaning…" aria-label="Query" autofocus />
+    <input @ref="Input" class="searchbar-input" @bind:get="Value" @bind:set="OnInputAsync" @bind:event="oninput"
+           @onkeydown="OnKeyDownAsync" @onfocusout="Close" placeholder="Ask for a passage by meaning…" aria-label="Query" autofocus
+           role="combobox" aria-autocomplete="list" aria-controls="search-suggestions"
+           aria-expanded="@(suggestions.Count > 0 ? "true" : "false")"
+           aria-activedescendant="@(suggestions.Count > 0 ? $"search-suggestion-{highlighted}" : null)" />
 
     @if (!string.IsNullOrEmpty(Value) && !Busy)
     {
@@ -25,9 +28,44 @@
         }
         <span>Search</span>
     </button>
+
+    @if (suggestions.Count > 0)
+    {
+        var (icon, label) = draft?.Key switch
+        {
+            null => ("bi-funnel", "Filters"),
+            SearchQuery.TagKey => ("bi-tag", "Tags"),
+            _ => ("bi-collection", "Collections"),
+        };
+        @* Pressing on an option would otherwise blur the input and close the list before the click lands. *@
+        <ul id="search-suggestions" class="searchbar-suggestions" role="listbox" aria-label="@label">
+            @for (var i = 0; i < suggestions.Count; i++)
+            {
+                var index = i;
+                <li id="search-suggestion-@index" role="option" aria-selected="@(index == highlighted ? "true" : "false")"
+                    class="searchbar-suggestion @(index == highlighted ? "is-highlighted" : null)"
+                    @onmousedown:preventDefault @onclick="() => AcceptAsync(suggestions[index])">
+                    <i class="bi @icon" aria-hidden="true"></i>
+                    <span>@suggestions[index]</span>
+                    @if (draft?.Key is null)
+                    {
+                        <span class="searchbar-suggestion-hint">@KeywordHints[suggestions[index]]</span>
+                    }
+                </li>
+            }
+        </ul>
+    }
 </div>
 
 @code {
+    private const int MaxSuggestions = 8;
+
+    private static readonly Dictionary<string, string> KeywordHints = new()
+    {
+        [$"{SearchQuery.CollectionKey}:"] = "search one collection",
+        [$"{SearchQuery.TagKey}:"] = "only documents with a tag",
+    };
+
     [Parameter]
     public string Value { get; set; } = string.Empty;
 
@@ -43,11 +81,83 @@
     [Parameter]
     public EventCallback OnClear { get; set; }
 
+    // What tag: and in: suggest.
+    [Parameter]
+    public IReadOnlyList<string> Tags { get; set; } = [];
+
+    [Parameter]
+    public IReadOnlyList<string> Collections { get; set; } = [];
+
     // The page's keyboard handling moves focus between this and the results.
     public ElementReference Input { get; private set; }
 
+    // Suggestions show only while typing, not for a value restored from the URL.
+    private bool open;
+    private string lastValue = string.Empty;
+    private FilterDraft? draft;
+    private IReadOnlyList<string> suggestions = [];
+    private int highlighted;
+
+    protected override void OnParametersSet()
+    {
+        if (Value != lastValue)
+        {
+            lastValue = Value;
+            highlighted = 0;
+        }
+        Refresh();
+    }
+
+    private void Refresh()
+    {
+        draft = open ? SearchQuery.Draft(Value) : null;
+        suggestions = draft is null ? [] : draft.Key switch
+        {
+            null => SearchQuery.Keywords(Value),
+            SearchQuery.TagKey => SearchQuery.Suggest(draft.Partial, Tags, MaxSuggestions),
+            _ => SearchQuery.Suggest(draft.Partial, Collections, MaxSuggestions),
+        };
+        highlighted = Math.Min(highlighted, Math.Max(suggestions.Count - 1, 0));
+    }
+
+    private Task OnInputAsync(string value)
+    {
+        open = true;
+        return ValueChanged.InvokeAsync(value);
+    }
+
+    private void Close()
+    {
+        open = false;
+        Refresh();
+    }
+
+    private Task AcceptAsync(string value) => ValueChanged.InvokeAsync(SearchQuery.Complete(Value, draft!, value));
+
+    // Search.razor.js keeps these keys from moving focus or the caret while the list is open.
+    // A query can end in "in" or "t", so Enter still searches when only keywords are on offer.
     private async Task OnKeyDownAsync(KeyboardEventArgs e)
     {
+        if (suggestions.Count > 0)
+        {
+            switch (e.Key)
+            {
+                case "ArrowDown":
+                    highlighted = (highlighted + 1) % suggestions.Count;
+                    return;
+                case "ArrowUp":
+                    highlighted = (highlighted + suggestions.Count - 1) % suggestions.Count;
+                    return;
+                case "Enter" when draft?.Key is not null:
+                case "Tab" when !e.ShiftKey:
+                    await AcceptAsync(suggestions[highlighted]);
+                    return;
+                case "Escape":
+                    Close();
+                    return;
+            }
+        }
+
         if (e.Key == "Enter")
         {
             await OnSubmit.InvokeAsync();
