@@ -10,31 +10,46 @@
             </select>
         </label>
 
-        <div class="option" role="group" aria-label="Filter by type">
-            <span class="option-label">Type</span>
-            <div class="segmented">
-                @foreach (var (value, label) in KindPresets)
+        @* Type and count rarely change, so they wait behind a toggle; the toggle names them once they differ from the defaults. *@
+        <details class="search-more">
+            <summary class="search-more-toggle">
+                <i class="bi bi-sliders2" aria-hidden="true"></i>
+                <span>Options</span>
+                @if (string.Join(", ", Changed()) is { Length: > 0 } changed)
                 {
-                    <button type="button" class="@(Kind == value ? "active" : null)"
-                            aria-pressed="@(Kind == value ? "true" : "false")" @onclick="() => KindChanged.InvokeAsync(value)">
-                        @label
-                    </button>
+                    <span class="search-more-changed">· @changed</span>
                 }
-            </div>
-        </div>
+                <i class="bi bi-chevron-down search-more-chevron" aria-hidden="true"></i>
+            </summary>
 
-        <div class="option" role="group" aria-label="Number of results">
-            <span class="option-label">Results</span>
-            <div class="segmented">
-                @foreach (var preset in ResultPresets)
-                {
-                    <button type="button" class="@(Limit == preset ? "active" : null)"
-                            aria-pressed="@(Limit == preset ? "true" : "false")" @onclick="() => LimitChanged.InvokeAsync(preset)">
-                        @preset
-                    </button>
-                }
+            <div class="search-more-panel">
+                <div class="option" role="group" aria-label="Filter by type">
+                    <span class="option-label">Type</span>
+                    <div class="segmented">
+                        @foreach (var (value, label) in KindPresets)
+                        {
+                            <button type="button" class="@(Kind == value ? "active" : null)"
+                                    aria-pressed="@(Kind == value ? "true" : "false")" @onclick="() => KindChanged.InvokeAsync(value)">
+                                @label
+                            </button>
+                        }
+                    </div>
+                </div>
+
+                <div class="option" role="group" aria-label="Number of results">
+                    <span class="option-label">Results</span>
+                    <div class="segmented">
+                        @foreach (var preset in ResultPresets)
+                        {
+                            <button type="button" class="@(Limit == preset ? "active" : null)"
+                                    aria-pressed="@(Limit == preset ? "true" : "false")" @onclick="() => LimitChanged.InvokeAsync(preset)">
+                                @preset
+                            </button>
+                        }
+                    </div>
+                </div>
             </div>
-        </div>
+        </details>
     </div>
 
     @* Tags get a row of their own: their count varies, and wrapping them among fixed controls made the row ragged. *@
@@ -57,6 +72,8 @@
 </div>
 
 @code {
+    public const int DefaultLimit = 10;
+
     public static readonly int[] ResultPresets = [5, 10, 20, 50];
 
     public static readonly (DocumentKind? Value, string Label)[] KindPresets =
@@ -97,6 +114,18 @@
 
     [Parameter]
     public EventCallback<string> OnToggleTag { get; set; }
+
+    private IEnumerable<string> Changed()
+    {
+        if (Kind is { } kind)
+        {
+            yield return KindLabel(kind);
+        }
+        if (Limit != DefaultLimit)
+        {
+            yield return $"{Limit} results";
+        }
+    }
 
     // The posted value comes from the browser; only a collection on offer may be searched.
     private Task OnCollectionChangedAsync(ChangeEventArgs e) =>

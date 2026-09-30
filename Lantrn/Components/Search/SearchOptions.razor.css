@@ -76,6 +76,91 @@
     border-bottom-color: var(--bo-accent);
 }
 
+.search-more {
+    position: relative;
+}
+
+.search-more-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.25rem 0.75rem;
+    cursor: pointer;
+    list-style: none;
+    border: 1px solid var(--bo-line);
+    border-radius: 999px;
+    color: var(--bo-ink-muted);
+    font-size: 0.8rem;
+    user-select: none;
+    transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.search-more-toggle::-webkit-details-marker {
+    display: none;
+}
+
+.search-more-toggle:hover,
+.search-more[open] .search-more-toggle {
+    color: var(--bo-ink);
+    border-color: var(--bo-ink-muted);
+}
+
+.search-more-toggle:focus-visible {
+    outline: none;
+    box-shadow: 0 0 0 0.2rem var(--bo-focus-ring);
+}
+
+.search-more-changed {
+    color: var(--bo-accent-text);
+    font-weight: 600;
+}
+
+.search-more-chevron {
+    font-size: 0.65rem;
+    transition: transform 0.15s ease;
+}
+
+.search-more[open] .search-more-chevron {
+    transform: rotate(180deg);
+}
+
+/* Floats over the results; below the sticky search bar so it never covers the query while scrolling. */
+.search-more-panel {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
+    white-space: nowrap;
+    background-color: var(--bo-surface);
+    border: 1px solid var(--bo-line);
+    border-radius: var(--bs-border-radius-lg);
+    box-shadow: var(--bo-shadow-md);
+}
+
+.is-landing .search-more-panel {
+    left: 50%;
+    transform: translateX(-50%);
+}
+
+.search-more-panel .option-label {
+    width: 4.25rem;
+}
+
+@media (max-width: 575.98px) {
+    .search-more-panel,
+    .is-landing .search-more-panel {
+        position: static;
+        margin-top: 0.5rem;
+        transform: none;
+        white-space: normal;
+    }
+}
+
 .segmented {
     display: inline-flex;
     padding: 0.15rem;

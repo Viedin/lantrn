@@ -29,7 +29,8 @@
     }
 
     <div class="search-top">
-        <SearchBar @ref="searchBar" @bind-Value="query" Busy="busy" OnSubmit="SubmitSearchAsync" OnClear="ClearQuery" />
+        <SearchBar @ref="searchBar" Value="@query" ValueChanged="OnQueryChangedAsync" Busy="busy" OnSubmit="SubmitSearchAsync" OnClear="ClearQuery"
+                   Tags="availableTags" Collections="collectionNames" />
     </div>
 
     <SearchOptions Collections="collections" Labels="labels" Collection="collection?.Id" CollectionChanged="PickCollectionAsync"
@@ -42,14 +43,20 @@
             <span><kbd>↑</kbd><kbd>↓</kbd> move through results</span>
             <span><kbd>Enter</kbd> open document</span>
             <span><kbd>Esc</kbd> back to search</span>
+            <span><kbd>tag:</kbd><kbd>in:</kbd> filter by tag or collection</span>
         </p>
+    }
+
+    @if (filterError is not null)
+    {
+        <div class="alert alert-warning">@filterError</div>
     }
 
     @if (error is not null)
     {
         <div class="alert alert-danger">@error</div>
     }
-    else if (RequestedCollectionMissing && collection is not null)
+    else if (requestedCollectionMissing && collection is not null)
     {
         <div class="alert alert-warning">
             The collection in this link doesn't exist or is private, so '@labels[collection.Id]' is searched instead.
@@ -107,8 +114,6 @@
 </div>
 
 @code {
-    private const int DefaultLimit = 10;
-
     // The search lives in the URL, so going back from a document (or reloading) restores it.
     [SupplyParameterFromQuery(Name = "q")]
     public string? Q { get; set; }
@@ -127,11 +132,12 @@
 
     private string query = string.Empty;
     private CollectionSummary? collection;
-    private int limit = DefaultLimit;
+    private int limit = SearchOptions.DefaultLimit;
     private DocumentKind? kind;
 
     private IReadOnlyList<CollectionSummary> collections = [];
     private Dictionary<Guid, string> labels = [];
+    private IReadOnlyList<string> collectionNames = [];
     private IReadOnlyList<string> availableTags = [];
     private Guid? tagsCollection;
     private HashSet<string> selectedTags = [];
@@ -147,6 +153,7 @@
     private string[] terms = [];
     private ScoreKind scoreKind;
     private string? error;
+    private string? filterError;
     private bool busy;
     private long elapsedMs;
     private string? lastSearchUri;
@@ -166,8 +173,8 @@
     private bool IsLanding => string.IsNullOrWhiteSpace(Q) && hits is null && !busy && error is null;
 
     // A link can name a collection that was deleted, made private, or is an old name from before collections had ids.
-    private bool RequestedCollectionMissing =>
-        !string.IsNullOrEmpty(CollectionParameter) && !(Guid.TryParse(CollectionParameter, out var id) && id == collection?.Id);
+    // Checked when the URL is read, since picking another collection afterwards is not the link's doing.
+    private bool requestedCollectionMissing;
 
     private SearchHit? SelectedHit => hits is not null && selected >= 0 && selected < hits.Count ? hits[selected] : null;
 
@@ -181,6 +188,7 @@
         user = (await AuthenticationState).User;
         collections = await Documents.ListCollectionsAsync(user, CollectionAccess.Read);
         labels = collections.ToDictionary(c => c.Id, c => CollectionLabels.Name(c, collections, user));
+        collectionNames = collections.Select(c => labels[c.Id]).ToList();
     }
 
     protected override async Task OnParametersSetAsync()
@@ -188,7 +196,9 @@
         query = Q ?? string.Empty;
         // Only ever one the viewer may read, whatever the URL asks for.
         collection = CollectionSelect.Pick(collections, CollectionParameter);
-        limit = LimitParameter is { } requested && SearchOptions.ResultPresets.Contains(requested) ? requested : DefaultLimit;
+        requestedCollectionMissing = !string.IsNullOrEmpty(CollectionParameter)
+            && !(Guid.TryParse(CollectionParameter, out var requestedId) && requestedId == collection?.Id);
+        limit = LimitParameter is { } requested && SearchOptions.ResultPresets.Contains(requested) ? requested : SearchOptions.DefaultLimit;
         selectedTags = (TagParameter ?? []).ToHashSet();
         kind = Enum.TryParse<DocumentKind>(KindParameter, ignoreCase: true, out var requestedKind) && Enum.IsDefined(requestedKind)
             ? requestedKind
@@ -289,7 +299,7 @@
             ["collection"] = collection?.Id.ToString(),
             ["tag"] = selectedTags.Count > 0 ? selectedTags.Order().ToArray() : null,
             ["kind"] = kind?.ToString().ToLowerInvariant(),
-            ["limit"] = limit == DefaultLimit ? null : limit,
+            ["limit"] = limit == SearchOptions.DefaultLimit ? null : limit,
         });
 
     private void ToggleTag(string tag)
@@ -304,6 +314,7 @@
     {
         query = string.Empty;
         error = null;
+        filterError = null;
         Navigation.NavigateTo(SearchUri(null));
     }
 
@@ -311,6 +322,12 @@
     private async Task SubmitSearchAsync()
     {
         if (busy || string.IsNullOrWhiteSpace(query))
+        {
+            return;
+        }
+
+        // Typing only filters sets them without searching.
+        if (!await ApplyTypedFiltersAsync() || string.IsNullOrWhiteSpace(query))
         {
             return;
         }
@@ -324,6 +341,62 @@
         }
 
         Navigation.NavigateTo(uri);
+    }
+
+    // A finished in: switches collection straight away, so tag: goes on to suggest that collection's tags.
+    private async Task OnQueryChangedAsync(string value)
+    {
+        query = value;
+        if (SearchQuery.Draft(value)?.Key == SearchQuery.CollectionKey)
+        {
+            return;
+        }
+
+        if (SearchQuery.Parse(value).Collection is { } name && CollectionNamed(name) is { } named && named.Id != collection?.Id)
+        {
+            await PickCollectionAsync(named.Id);
+        }
+    }
+
+    private CollectionSummary? CollectionNamed(string name) =>
+        collections.FirstOrDefault(c => labels[c.Id].Equals(name, StringComparison.OrdinalIgnoreCase));
+
+    // Moves tag: and in: out of the query into the filter controls, which the URL is built from.
+    // A name that matches nothing leaves the query as typed, to be corrected.
+    private async Task<bool> ApplyTypedFiltersAsync()
+    {
+        var parsed = SearchQuery.Parse(query);
+
+        if (parsed.Collection is { } name)
+        {
+            var named = CollectionNamed(name);
+            if (named is null)
+            {
+                filterError = $"There's no collection called '{name}'.";
+                return false;
+            }
+            if (named.Id != collection?.Id)
+            {
+                await PickCollectionAsync(named.Id);
+            }
+        }
+
+        var tags = new List<string>();
+        foreach (var tag in parsed.Tags)
+        {
+            var known = availableTags.FirstOrDefault(t => t.Equals(tag, StringComparison.OrdinalIgnoreCase));
+            if (known is null)
+            {
+                filterError = $"There's no tag '{tag}' in this collection.";
+                return false;
+            }
+            tags.Add(known);
+        }
+
+        selectedTags.UnionWith(tags);
+        query = parsed.Text;
+        filterError = null;
+        return true;
     }
 
     private async Task RunSearchAsync()

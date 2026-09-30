@@ -2,6 +2,10 @@
 
 Type a question or a few words on the home page. Click a result to preview the passage in context, or open the full document.
 
+## Filtering from the search box
+
+Type `tag:` or `in:` to filter by tag or collection; suggestions show as you type. Quote names with spaces, e.g. `in:"Team docs"`. When you search, the filters move into the controls under the box. With several tags, documents with any of them match.
+
 ## How it works
 
 Every search runs two ways at once:
