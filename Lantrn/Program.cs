@@ -10,7 +10,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddRazorComponents()
     .AddInteractiveServerComponents();
 builder.Services.AddCoreServices(builder.Configuration, builder.Environment);
-builder.Services.AddSiteAuthentication();
+builder.Services.AddSiteAuthentication(builder.Configuration, builder.Environment);
 builder.Services.AddPublicApi();
 
 var app = builder.Build();

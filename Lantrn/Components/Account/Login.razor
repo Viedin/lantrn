@@ -1,10 +1,12 @@
 @page "/account/login"
 
 @using Lantrn.Services
+@using Microsoft.Extensions.Options
 
 @inject AccountService Accounts
 @inject SignInManager<ApplicationUser> SignInManager
 @inject NavigationManager Navigation
+@inject IOptions<OidcOptions> Oidc
 
 <PageTitle>Sign in</PageTitle>
 
@@ -16,28 +18,33 @@
     <div class="alert alert-danger">@error</div>
 }
 
-<EditForm Model="Input" method="post" OnValidSubmit="LoginAsync" FormName="login">
-    <DataAnnotationsValidator />
+<ExternalLogin ReturnUrl="@Return" SwitchAccount="@(ExternalError is not null)" />
 
-    <div class="mb-3">
-        <label class="form-label" for="email">Email</label>
-        <InputText id="email" type="email" class="form-control" @bind-Value="Input.Email" autocomplete="username" autofocus />
-        <ValidationMessage For="() => Input.Email" />
-    </div>
+@if (Oidc.Value.LocalLogin)
+{
+    <EditForm Model="Input" method="post" OnValidSubmit="LoginAsync" FormName="login">
+        <DataAnnotationsValidator />
 
-    <div class="mb-3">
-        <label class="form-label" for="password">Password</label>
-        <InputText id="password" type="password" class="form-control" @bind-Value="Input.Password" autocomplete="current-password" />
-        <ValidationMessage For="() => Input.Password" />
-    </div>
+        <div class="mb-3">
+            <label class="form-label" for="email">Email</label>
+            <InputText id="email" type="email" class="form-control" @bind-Value="Input.Email" autocomplete="username" autofocus />
+            <ValidationMessage For="() => Input.Email" />
+        </div>
 
-    <div class="form-check mb-4">
-        <InputCheckbox id="remember" class="form-check-input" @bind-Value="Input.RememberMe" />
-        <label class="form-check-label" for="remember">Keep me signed in</label>
-    </div>
+        <div class="mb-3">
+            <label class="form-label" for="password">Password</label>
+            <InputText id="password" type="password" class="form-control" @bind-Value="Input.Password" autocomplete="current-password" />
+            <ValidationMessage For="() => Input.Password" />
+        </div>
 
-    <button type="submit" class="btn btn-primary w-100">Sign in</button>
-</EditForm>
+        <div class="form-check mb-4">
+            <InputCheckbox id="remember" class="form-check-input" @bind-Value="Input.RememberMe" />
+            <label class="form-check-label" for="remember">Keep me signed in</label>
+        </div>
+
+        <button type="submit" class="btn btn-primary w-100">Sign in</button>
+    </EditForm>
+}
 
 <p class="auth-switch">Accounts are by invitation.</p>
 
@@ -48,14 +55,21 @@
     [SupplyParameterFromQuery(Name = "returnUrl")]
     private string? Return { get; set; }
 
+    [SupplyParameterFromQuery(Name = "error")]
+    private string? ExternalError { get; set; }
+
+    [SupplyParameterFromQuery(Name = "email")]
+    private string? ExternalEmail { get; set; }
+
     private string? error;
 
     protected override async Task OnInitializedAsync()
     {
         Input ??= new();
+        error = Enum.TryParse<ExternalSignInError>(ExternalError, out var external) ? Describe(external, ExternalEmail) : null;
 
-        // Nobody can sign in yet; the first account to register becomes the admin.
-        if (!await Accounts.HasUsersAsync())
+        // Nobody can sign in yet; the first account to register becomes the admin. A failed single sign-on stays to say why.
+        if (error is null && !await Accounts.HasUsersAsync())
         {
             Navigation.NavigateTo("account/register");
         }
@@ -74,6 +88,16 @@
             ? "Too many failed attempts. Try again in a few minutes."
             : "Invalid email or password.";
     }
+
+    // The address matters when an invite went to a different one than the provider knows the person by.
+    private static string Describe(ExternalSignInError external, string? email) => external switch
+    {
+        ExternalSignInError.NoVerifiedEmail => "Your sign-in provider didn't share a verified email address, so Lantrn can't match it to an account.",
+        ExternalSignInError.NotInvited when !string.IsNullOrEmpty(email) =>
+            $"There's no account or invite for {email}, the address your sign-in provider gave. Ask an admin to invite that address.",
+        ExternalSignInError.NotInvited => "You don't have an account here yet. Ask an admin for an invite.",
+        _ => "Signing in didn't work. Try again.",
+    };
 
     private sealed class LoginInput
     {
