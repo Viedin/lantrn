@@ -1,75 +1,58 @@
 # Configuration
 
-Most things are set on the **Settings** page and take effect on the next search or ingest — no restart needed.
-
-Any OpenAI-compatible server works: OpenAI, LM Studio, Ollama, vLLM and so on.
+Models and endpoints are set on the **Settings** page and apply without a restart. Any OpenAI-compatible server works.
 
 ## Embeddings
 
-Required. Turns text into vectors for search. The dashboard shows a reminder until one works.
+Required.
 
-- The base URL must include `/v1`.
-- **Dimensions** is only sent if set. Many local models reject it.
-- **Query prefix** is prepended to search queries only. Instruction-tuned models like Qwen3-Embedding expect one:
+- **Dimensions** is only sent when set. Many local models reject it.
+- **Query prefix** is added to search queries only. Instruction-tuned models like Qwen3-Embedding expect one, e.g. `Instruct: Given a search query, retrieve relevant passages that answer the query\nQuery: `.
 
-```
-Instruct: Given a search query, retrieve relevant passages that answer the query
-Query: 
-```
-
-::: warning Changing the model or keyword language
-Vectors from different models don't match. If you switch embedding model or keyword language, use **Re-embed** on each collection's page.
+::: warning
+Vectors from different models don't mix. After switching embedding model or keyword language, use **Re-embed** on each collection.
 :::
 
 ## Vision
 
-Optional. Reads text from images. Needed only if you ingest images.
+Optional. Reads text from images, so it's only needed if you ingest images.
 
 ## Search assistant
 
-Optional, **off** by default. A chat model that answers from the top search results.
+Optional, off by default. A chat model that answers from the top search results. It sends document text to the chat endpoint, so use a local model if that matters to you.
 
 ## Reranker
 
-Optional, **off** by default. Reorders the top search results with a reranker model such as `bge-reranker-v2-m3` or `Qwen3-Reranker`. The server must offer a Cohere/Jina-style `/rerank` endpoint. vLLM, llama.cpp (`--reranking`), Infinity, Jina and Cohere do; LM Studio and Ollama don't.
+Optional, off by default. Reorders the top results with a reranker model such as `bge-reranker-v2-m3`. The server needs a Cohere/Jina-style `/rerank` endpoint: vLLM, llama.cpp (`--reranking`), Infinity, Jina and Cohere have one, LM Studio and Ollama don't.
 
-## Setting defaults with environment variables
+## Environment variables
 
-On a fresh install, the settings start from environment variables (or `appsettings.json`). After the first start they live in the database and the Settings page wins.
-
-Use `__` (double underscore) for nesting:
+On a fresh install the settings are seeded from environment variables. After the first start they live in the database and the Settings page wins. Use `__` for nesting:
 
 ```yaml
-# docker-compose.yml
 environment:
   Embeddings__BaseUrl: http://host.docker.internal:1234/v1
   Embeddings__Model: text-embedding-qwen3-embedding-4b
-  Vision__Model: qwen2.5-vl-7b-instruct
   Assistant__Enabled: "true"
-  Reranker__Enabled: "true"
-  Reranker__BaseUrl: http://host.docker.internal:8080/v1
-  Keywords__Language: english
-  Access__PublicSearch: "false"
 ```
 
-## Server settings
+These can only be set through configuration:
 
-These are only set through configuration, not the Settings page.
+| Key                         | Default                 | What it is                            |
+| --------------------------- | ----------------------- | ------------------------------------- |
+| `ConnectionStrings__Lantrn` | `Data Source=lantrn.db` | SQLite database                       |
+| `Storage__DataPath`         | `data`                  | Originals, images, keys, upload inbox |
+| `Qdrant__Host`              | `localhost`             |                                       |
+| `Qdrant__Port`              | `6334`                  | gRPC port                             |
+| `Qdrant__Https`             | `false`                 |                                       |
+| `Qdrant__ApiKey`            |                         |                                       |
 
-| Key                         | Default                 | What it is                                |
-| --------------------------- | ----------------------- | ----------------------------------------- |
-| `ConnectionStrings__Lantrn` | `Data Source=lantrn.db` | SQLite database                           |
-| `Storage__DataPath`         | `data`                  | Originals, images, keys, upload inbox     |
-| `Qdrant__Host`              | `localhost`             |                                           |
-| `Qdrant__Port`              | `6334`                  | gRPC port                                 |
-| `Qdrant__Https`             | `false`                 |                                           |
-| `Qdrant__ApiKey`            | —                       |                                           |
+[Single sign-on](./sso) has its own settings.
+
+## Reverse proxy
+
+Behind a proxy that terminates HTTPS, set `ASPNETCORE_FORWARDEDHEADERS_ENABLED: "true"` so Lantrn sees the original address. The proxy must also pass WebSockets through, since the UI runs over a live connection.
 
 ## Backups
 
-Everything lives in two places:
-
-- The **app data volume** (`/app/data`): database, uploaded originals, sign-in keys.
-- The **Qdrant volume**: the vectors.
-
-Back up both. If you lose only Qdrant, **Re-embed** on each collection rebuilds it.
+Back up both Docker volumes: the app data volume (`/app/data`, with the database, originals and sign-in keys) and the Qdrant volume. If you only lose Qdrant, **Re-embed** on each collection rebuilds it.

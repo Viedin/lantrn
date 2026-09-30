@@ -1,8 +1,8 @@
 # Getting started
 
-Lantrn runs as two containers: the app and [Qdrant](https://qdrant.tech), which stores the vectors.
+Lantrn runs as two containers: the app and [Qdrant](https://qdrant.tech) for the vectors.
 
-## 1. Start it
+## Install
 
 Download the compose file into a new folder and start it:
 
@@ -11,38 +11,31 @@ curl -O https://raw.githubusercontent.com/Viedin/lantrn/main/Lantrn/docker-compo
 docker compose up -d
 ```
 
-This pulls the published image, `ghcr.io/viedin/lantrn`. Open http://localhost:8080.
+Open http://localhost:8080 and register. The first account becomes the admin. After that, new users need an [invite](./users#inviting-users).
 
-::: tip Updating
-Run `docker compose pull && docker compose up -d` to move to the latest release. Your data lives in Docker volumes and is kept. To stay on a specific version, change the tag in `docker-compose.yml`, for example `ghcr.io/viedin/lantrn:1.2`.
-:::
+## Connect an embedding model
 
-## 2. Create the admin account
+Search needs an embedding model. Fill in **Settings → Embeddings**:
 
-The **first account you register becomes the admin**. After that, registration is closed and new users need an [invite](./users).
+| Field    | Example                               |
+| -------- | ------------------------------------- |
+| Base URL | `http://host.docker.internal:1234/v1` |
+| Model    | `text-embedding-qwen3-embedding-4b`   |
+| API key  | Only if your endpoint needs one       |
 
-## 3. Connect an embedding model
+The base URL must end with the version segment (`/v1`). Inside Docker, `localhost` is the container itself, so use `host.docker.internal` to reach LM Studio or Ollama on the host.
 
-Search needs an embedding model. Go to **Settings** and fill in the **Embeddings** section:
+A vision model (for images) and a chat model (for answers) are optional. See [Configuration](./configuration).
 
-| Field    | Example                                 |
-| -------- | --------------------------------------- |
-| Base URL | `http://host.docker.internal:1234/v1`   |
-| Model    | `text-embedding-qwen3-embedding-4b`     |
-| API key  | Only if your endpoint needs one         |
+## Add documents and search
 
-The base URL must include the version segment (`/v1`).
+Create a collection on **Collections**, then upload files on **Ingest** or crawl a site on **Crawl**. See [Adding documents](./adding-documents).
 
-::: tip Running a model on your own machine?
-From inside Docker, `localhost` is the container itself. Use `host.docker.internal` to reach LM Studio or Ollama on the host.
-:::
+## Updating
 
-A **vision** model (for images) and a **chat** model (for answers) are optional. See [Configuration](./configuration).
+```sh
+docker compose pull
+docker compose up -d
+```
 
-## 4. Add documents
-
-Create a collection on the **Collections** page, then upload files into it on the **Ingest** page, or crawl a website on the **Crawl** page. See [Adding documents](./adding-documents) for all the options.
-
-## 5. Search
-
-Go to the home page and type a question. That's it.
+Your data lives in Docker volumes and is kept. To stay on a version, pin the tag in `docker-compose.yml`, for example `ghcr.io/viedin/lantrn:1.2`.

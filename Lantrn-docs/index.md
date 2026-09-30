@@ -3,8 +3,8 @@ layout: home
 
 hero:
   name: "Lantrn"
-  text: "Search your documents by meaning"
-  tagline: Self-hosted. Bring your own models. Your files never have to leave your network.
+  text: "Self-hosted semantic search for your documents"
+  tagline: Upload files or crawl a site, then search them by meaning. Works with any OpenAI-compatible model server.
   image:
     src: /logo.svg
     alt: Lantrn
@@ -13,36 +13,20 @@ hero:
       text: Get started
       link: /guide/getting-started
     - theme: alt
-      text: Configuration
-      link: /guide/configuration
+      text: GitHub
+      link: https://github.com/Viedin/lantrn
 
 features:
   - title: Hybrid search
-    details: Meaning and keywords in one ranking. Finds the idea, and still catches exact names, codes and amounts.
-  - title: Any document
-    details: PDF, Markdown, HTML, text — and images, read by a vision model. Or crawl a whole website.
-  - title: Answers with sources
-    details: Optionally let a chat model answer from the results, citing every passage it used.
-  - title: Bring any model
-    details: Works with any OpenAI-compatible API — OpenAI, LM Studio, Ollama, vLLM.
-  - title: Private or shared
-    details: Keep a collection to yourself, or make it public so everyone can search it and add to it.
-  - title: Built for teams
-    details: Admins, users and invite links. Or turn on public search and share it with everyone.
+    details: Embeddings and keyword matching combined, so exact names and codes still match.
+  - title: Most file types
+    details: PDF, Office, e-mail, Markdown, HTML and more. Images are read by a vision model.
+  - title: Websites and repos
+    details: Crawl a site or a public GitHub repository and re-sync it daily or weekly.
+  - title: Optional answers
+    details: A chat model can answer from the search results and cite the passages it used.
+  - title: Users and collections
+    details: Invite users, keep collections private or share them.
+  - title: API and MCP
+    details: A REST API for scripts and an MCP server for AI assistants.
 ---
-
-## Up and running in a minute
-Download the compose file into a new folder and start it:
-
-```sh
-curl -O https://raw.githubusercontent.com/Viedin/lantrn/main/Lantrn/docker-compose.yml
-docker compose up -d
-```
-
-1. Open http://localhost:8080 and register — the first account is the admin.
-2. Point **Settings → Embeddings** at your model.
-3. Create a collection, upload files on the **Ingest** page, and start searching.
-
-See [Adding documents](/guide/adding-documents) for all the options.
-
-[Read the full guide →](/guide/getting-started)

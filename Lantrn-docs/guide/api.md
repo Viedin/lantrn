@@ -1,58 +1,26 @@
 # Public API
 
-The API lets scripts and integrations do what an admin does in **Search**, **Collections** and **Ingest**: search, create and delete collections, add documents and manage the ones already there.
-
-The full reference lives in Lantrn itself at **Developers → API reference** (`/api/reference`). It is generated from the OpenAPI document at `/api/openapi/v1.json`, which you can also load into Postman, Insomnia or a client generator.
+The API covers search, collections and documents. The full reference is in the app under **Developers → API reference**, generated from `/api/openapi/v1.json`.
 
 ## API keys
 
-Every request needs an API key from an admin.
-
-1. Go to **Developers → API keys**.
-2. Name the key after what will use it, and create it.
-3. Copy the key. It is shown only once.
-
-Send it as a bearer token:
+Create a key under **Developers → API keys**. It's shown once. Send it as a bearer token:
 
 ```sh
 curl https://lantrn.example.com/api/v1/collections \
   -H "Authorization: Bearer $LANTRN_API_KEY"
 ```
 
-A key acts as the admin who created it. It stops working if you revoke it, or if that user stops being an admin or is removed.
+A key acts as the admin who created it, and stops working if it's revoked or that user is no longer an admin.
 
-## Searching
+## Endpoints
 
-`GET /api/v1/collections/{id}/search` searches one collection the same way the Search page does:
+| Endpoint                                           | Does                               |
+| -------------------------------------------------- | ---------------------------------- |
+| `GET /api/v1/collections/{id}/search?q=...`        | Search one collection              |
+| `GET /api/v1/documents/{id}`                       | Get a full document                |
+| `POST /api/v1/collections/{id}/documents`          | Add a file (`multipart/form-data`) |
+| `POST /api/v1/collections/{id}/documents/markdown` | Add Markdown or text (JSON)        |
+| `POST /api/v1/collections/{id}/documents/url`      | Add a URL for Lantrn to fetch      |
 
-```sh
-curl "https://lantrn.example.com/api/v1/collections/$COLLECTION_ID/search?q=parental+leave&tags=hr&limit=5" \
-  -H "Authorization: Bearer $LANTRN_API_KEY"
-```
-
-Each hit is a passage with the id of its document, which `GET /api/v1/documents/{id}` returns in full.
-
-## Ingesting documents
-
-There are three ways to add a document to a collection:
-
-| Endpoint                                           | Sends                                  |
-| -------------------------------------------------- | -------------------------------------- |
-| `POST /api/v1/collections/{id}/documents`          | A file, as `multipart/form-data`       |
-| `POST /api/v1/collections/{id}/documents/markdown` | Markdown or plain text, as JSON        |
-| `POST /api/v1/collections/{id}/documents/url`      | A URL for Lantrn to fetch, as JSON     |
-
-Collections are addressed by id, since names only need to be unique per owner. `GET /api/v1/collections` lists them with their ids.
-
-Each one waits until the document is extracted, chunked and embedded, and then returns the stored document. Like on the Ingest page, a document with the same source (file name or URL) in the collection is replaced, not duplicated.
-
-```sh
-curl https://lantrn.example.com/api/v1/collections/$COLLECTION_ID/documents \
-  -H "Authorization: Bearer $LANTRN_API_KEY" \
-  -F "file=@leave-policy.pdf" \
-  -F "tags=hr,policies"
-```
-
-## Errors
-
-Errors are returned as [problem details](https://www.rfc-editor.org/rfc/rfc9457) JSON with a matching status code, such as `404` for an unknown collection or `409` when a collection already exists.
+Adding a document waits until it's embedded and returns it. A document with the same file name or URL replaces the old one. Errors are [problem details](https://www.rfc-editor.org/rfc/rfc9457) JSON.

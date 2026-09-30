@@ -2,38 +2,26 @@
 
 ## Roles
 
-| Role   | Can do                                                                          |
-| ------ | ------------------------------------------------------------------------------- |
-| Admin  | Everything: every collection, settings, users, API keys                         |
-| User   | Create collections; add and remove documents in their own and in public ones     |
-| Guest  | Not signed in. Search public collections, only while public search is on        |
+| Role  | Can                                                                          |
+| ----- | ---------------------------------------------------------------------------- |
+| Admin | Do everything: every collection, settings, users, API keys                   |
+| User  | Create collections, and add or remove documents in their own and public ones |
+| Guest | Search public collections without signing in, if public search is on         |
 
-The first account ever registered becomes the admin. There must always be at least one admin.
+The first registered account is the admin, and there is always at least one.
 
-## Public and private collections
+## Collections
 
-Each collection is public or private. Private collections can only be seen by their owner and the admins. Public collections are shared: every user can search them and add, retag or remove their documents. Only the owner and the admins can change a collection's visibility, re-embed, clear or delete it.
+Private collections are visible only to their owner and admins. Public collections can be searched and edited by every user. Only the owner and admins can change visibility, re-embed, clear or delete a collection.
 
-Names are unique per owner, so two users can each have a collection called `notes`. Every document and crawled website records who added it. Removing a user deletes every collection they own, and everything they added to anyone else's. Removing an admin instead hands everything they own and added to the admin who removed them, since an admin's collections belong to the workspace.
+Removing a user deletes the collections they own and the documents they added elsewhere. Removing an admin hands their content to the admin who removed them instead.
 
 ## Inviting users
 
-Registration is invite-only after the first account.
+Registration is invite-only after the first account. Create an invite under **Admin → Users** and send the link yourself, since Lantrn doesn't send email. Invites expire after 7 days and work once.
 
-1. Go to **Admin → Users**.
-2. Enter an email and create an invite.
-3. Send the invite link to the person. Lantrn doesn't send email.
-
-Invites expire after **7 days** and can be used once. Creating a new invite for the same email replaces the old one.
-
-With [single sign-on](./sso), the invited person can sign in through the provider instead of choosing a password.
+With [single sign-on](./sso), invited users can sign in through the provider instead of picking a password.
 
 ## Public search
 
-In **Settings → Public search** you can let anyone search and read public collections without signing in. It is **off** by default.
-
-When it's on, visitors can also use the search assistant if that is enabled.
-
-## Changing roles
-
-Admins can promote or demote users, or remove them, from **Admin → Users**. Changes take effect on open pages within a short while — no need for the user to sign out.
+**Settings → Public search** lets anyone search and read public collections without an account, including the search assistant if it's on. Off by default.
