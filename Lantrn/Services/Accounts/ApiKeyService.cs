@@ -9,7 +9,7 @@ public sealed record ApiKeySummary(Guid Id, string Name, string Prefix, DateTime
 public sealed class ApiKeyService(IDbContextFactory<DatabaseContext> dbFactory, ILogger<ApiKeyService> logger)
 {
     // Marks the string as a Lantrn key, so a leaked one is easy to recognise and search for.
-    public const string KeyPrefix = "lnt_";
+    public const string KeyPrefix = "lnt-";
 
     // Last used is only a hint, so a busy key isn't written on every request.
     private static readonly TimeSpan LastUsedPrecision = TimeSpan.FromMinutes(1);
