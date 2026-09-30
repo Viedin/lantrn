@@ -15,6 +15,7 @@ It's built with Blazor Server, uses [Qdrant](https://qdrant.tech) for vectors an
 - Collections and tags to keep things organized
 - Optional LLM answers based on your search results
 - Users, admins and invites, with private and shared public collections
+- A public API, and an MCP server so AI assistants can search your documents
 
 ## Running it
 

@@ -20,7 +20,7 @@ internal sealed class PublicApiDocumentTransformer : IOpenApiDocumentTransformer
             Title = "Lantrn API",
             Version = PublicApi.DocumentName,
             Description =
-                "Manage collections and ingest documents from scripts and integrations. Every request is made as the " +
+                "Search, manage collections and ingest documents from scripts and integrations. Every request is made as the " +
                 "admin who created the API key, and errors are returned as RFC 7807 problem details.",
         };
 

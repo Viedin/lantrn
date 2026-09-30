@@ -23,6 +23,7 @@ export default defineConfig({
           { text: 'Searching', link: '/guide/searching' },
           { text: 'Users and access', link: '/guide/users' },
           { text: 'Public API', link: '/guide/api' },
+          { text: 'AI assistants (MCP)', link: '/guide/mcp' },
           { text: 'Configuration', link: '/guide/configuration' }
         ]
       },
