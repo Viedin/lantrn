@@ -30,3 +30,5 @@ features:
   - title: API and MCP
     details: A REST API for scripts and an MCP server for AI assistants.
 ---
+
+![Lantrn search results](/screenshot.png)

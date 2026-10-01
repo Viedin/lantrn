@@ -1,10 +1,12 @@
-# Lantrn
+# <img src="Lantrn/wwwroot/logo.svg" alt="" width="32" align="top"> Lantrn
 
 Self-hosted semantic search for your documents. Upload files or crawl a website, then search them by meaning. Optionally, a chat model answers from the results.
 
 Built with Blazor Server, [Qdrant](https://qdrant.tech) and [Xberg](https://www.nuget.org/packages/XbergIo.Xberg). Works with any OpenAI-compatible model server (OpenAI, LM Studio, Ollama, vLLM).
 
 **Docs: [viedin.github.io/lantrn](https://viedin.github.io/lantrn/)**
+
+![Lantrn search results](Lantrn-docs/public/screenshot.png)
 
 ## Features
 
