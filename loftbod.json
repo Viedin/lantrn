@@ -15,7 +15,7 @@
     }
   },
   "endpoint": { "port": 8080, "protocol": "http" },
-  "health": { "path": "/account/login", "startupTimeoutSeconds": 120 },
+  "health": { "path": "/logo.svg", "startupTimeoutSeconds": 120 },
   "config": [
     {
       "key": "EMBEDDINGS__BASEURL",
