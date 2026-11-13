@@ -29,6 +29,14 @@ Open http://localhost:8080 and register. The first account becomes the admin. Th
 
 See the [docs](https://viedin.github.io/lantrn/) for configuration, SSO and [development](https://viedin.github.io/lantrn/guide/development).
 
+## Loftbod
+
+The root `loftbod.json` packages Lantrn with a private Qdrant service. Each has a 1 GiB memory limit, one CPU, and 4 GiB of persistent storage. Backups must include both volumes.
+
+During installation, set the embedding endpoint and model. Use public HTTPS or a separate LAN machine running LM Studio (port 1234), vLLM (8000), or Ollama (11434). Loftbod blocks access to the host itself. Register the first account to become admin, then enter any model API keys in **Settings**. Never put keys in `loftbod.json`.
+
+When publishing a new version, update `version` and the app image tag in `loftbod.json` before creating the matching GitHub release. The existing Docker workflow builds both supported architectures.
+
 ## Contributing
 
 Pull requests are welcome.

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "name": "lantrn",
+  "version": "0.2.1",
+  "image": "ghcr.io/viedin/lantrn:0.2.1",
+  "architectures": ["linux/amd64", "linux/arm64"],
+  "run": {
+    "user": "1654:1654",
+    "env": {
+      "ASPNETCORE_HTTP_PORTS": "8080",
+      "CONNECTIONSTRINGS__LANTRN": "Data Source=/app/data/lantrn.db",
+      "STORAGE__DATAPATH": "/app/data",
+      "QDRANT__HOST": "qdrant",
+      "QDRANT__PORT": "6334"
+    }
+  },
+  "endpoint": { "port": 8080, "protocol": "http" },
+  "health": { "path": "/account/login", "startupTimeoutSeconds": 120 },
+  "config": [
+    {
+      "key": "EMBEDDINGS__BASEURL",
+      "type": "string",
+      "required": true,
+      "description": "OpenAI-compatible embedding endpoint ending in /v1. Use public HTTPS or a separate LAN machine on port 1234, 8000, or 11434."
+    },
+    {
+      "key": "EMBEDDINGS__MODEL",
+      "type": "string",
+      "required": true,
+      "description": "Embedding model served by the endpoint. If it needs an API key, enter that in Lantrn Settings after registering the first account."
+    }
+  ],
+  "storage": [
+    { "name": "data", "mountPath": "/app/data", "sizeMiB": 4096 }
+  ],
+  "resources": { "memoryMiB": 1024, "cpus": 1, "pids": 256 },
+  "permissions": { "network": ["internet", "lan"], "lanPorts": [1234, 8000, 11434] },
+  "services": [
+    {
+      "name": "qdrant",
+      "image": "docker.io/qdrant/qdrant:v1.19.0-unprivileged",
+      "run": {
+        "user": "1000:1000",
+        "env": {
+          "QDRANT__STORAGE__SNAPSHOTS_PATH": "/qdrant/storage/snapshots",
+          "QDRANT__TELEMETRY_DISABLED": "true"
+        }
+      },
+      "storage": [
+        { "name": "qdrant", "mountPath": "/qdrant/storage", "sizeMiB": 4096 }
+      ],
+      "resources": { "memoryMiB": 1024, "cpus": 1, "pids": 256 }
+    }
+  ]
+}
